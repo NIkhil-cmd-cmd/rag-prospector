@@ -1,0 +1,8 @@
+   streamlit
+   llama-index
+   google-api-python-client
+   google-auth
+   pandas
+   python-docx
+   requests
+   openai
