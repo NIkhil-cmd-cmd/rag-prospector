@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 # Set your OpenAI API key from Streamlit secrets
 os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
 
+# Initialize the OpenAI LLM
+llm = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
 
@@ -575,6 +578,14 @@ def create_chat_interface():
         .stChatInput {border-color: rgba(255, 255, 255, 0.1) !important; background: rgba(255, 255, 255, 0.05) !important;}
         </style>
     """, unsafe_allow_html=True)
+    
+    # Add a dropdown to select between searching the web or the drive
+    search_option = st.sidebar.selectbox(
+        "Choose search option:",
+        ["Search Web", "Search Drive"]
+    )
+    
+    st.write(f"You selected: {search_option}")
 
 def set_dark_theme():
     st.markdown("""
