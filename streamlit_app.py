@@ -683,6 +683,23 @@ def is_journalistic_topic(topic):
     journalistic_keywords = ["news", "report", "investigate", "journalism", "story", "article", "pitch", "analysis", "feature"]
     return any(keyword in topic.lower() for keyword in journalistic_keywords)
 
+def render_citation(citation):
+    """Render a citation card with consistent styling"""
+    st.markdown(
+        f"""
+        <div class="citation-card" style="background-color: hsla(200, 70%, 30%, 0.2)">
+            <div class="citation-header">
+                <span class="citation-title">{citation['filename']}</span>
+            </div>
+            <div class="citation-content">
+                <p>{citation['snippet']}</p>
+                <a href="{citation['link']}" target="_blank" class="citation-link">View Source →</a>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 def main():
     # Set up Streamlit page configuration
     st.set_page_config(
@@ -726,7 +743,7 @@ def main():
                     
                     st.markdown("### Related Sources")
                     for result in results:
-                        render_web_citation({
+                        render_citation({
                             'filename': result['title'],
                             'snippet': result['summary'],
                             'link': result['link']
