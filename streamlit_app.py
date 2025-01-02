@@ -8,7 +8,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-from llama_index.llms.openai import OpenAI
 import os
 from io import BytesIO
 import pandas as pd
@@ -22,9 +21,8 @@ import logging
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
-import openai
 
-
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -41,9 +39,6 @@ creds = service_account.Credentials.from_service_account_info(service_account_in
 service = build('drive', 'v3', credentials=creds)
 
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
-
-# Initialize the OpenAI LLM
-llm = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 @st.cache_resource
 def get_drive_service():
@@ -85,7 +80,7 @@ def get_file_content(service, file_id, mime_type):
                         if row[col] != '':  # Only include non-empty cells
                             row_content.append(f"{col}: {row[col]}")
                     formatted_content.append(" | ".join(row_content))
-            
+        
             return "\n".join(formatted_content)
             
         elif mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
@@ -402,9 +397,10 @@ def get_document_chunks(doc):
         )
         return splitter.split_text(doc.text)
 
-def render_drive_citation(citation):
-    """Render a citation card with relevance-based styling for Drive search"""
-    score = float(citation['score']) if citation['score'] != 'N/A' else 0
+def render_citation(citation):
+    """Render a citation card with relevance-based styling"""
+    score = float(citation['score'])
+    # Calculate background color based on score
     hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
     bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
     
@@ -415,19 +411,6 @@ def render_drive_citation(citation):
         <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
         <div class="doc-link">
             <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Document →</a>
-        </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-def render_web_citation(citation):
-    """Render a citation card for web search results"""
-    html = f"""
-    <div class="doc-card" style="background: hsla(200, 70%, 30%, 0.2); border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
-        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
-        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
-        <div class="doc-link">
-            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Source →</a>
         </div>
     </div>
     """
@@ -598,20 +581,20 @@ def set_dark_theme():
         <style>
         /* Dark theme base styles */
         [data-testid="stAppViewContainer"] {
-            background-color: #121212;
+            background-color: #000000;
             color: #ffffff;
         }
         [data-testid="stSidebar"] {
-            background-color: #1e1e1e;
-            border-right: 1px solid #333333;
+            background-color: #0a0a0a;
+            border-right: 1px solid #1a1a1a;
         }
         .stTextInput > div > div > input {
-            background-color: #2c2c2c !important;
+            background-color: #1a1a1a !important;
             color: #ffffff !important;
             padding: 12px !important;
         }
         .stChatMessage {
-            background-color: #2c2c2c !important;
+            background-color: #1a1a1a !important;
             border: none !important;
             padding: 16px !important;
             margin: 16px 0 !important;
@@ -694,7 +677,7 @@ def main():
     # Apply dark theme
     set_dark_theme()
     
-    # Initialize sidebar with logging and search type
+    # Initialize sidebar with logging
     sidebar_container = create_logging_sidebar()
     
     # Create header
@@ -703,112 +686,78 @@ def main():
     # Create chat interface styles
     create_chat_interface()
     
-    # Dropdown for selecting search type in the sidebar
-    search_type = sidebar_container.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
-    
-    if search_type == "Search Web for Topic":
-        with st.form(key='web_search_form'):
-            topic = st.text_input("Enter the topic you want to research:", key="search_topic")
-            submitted = st.form_submit_button("Search")
-        
-        if submitted:
-            if topic:
-                overall_summary, overall_pros, overall_cons, results = search_web(topic)
-                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and not results:
-                    st.error(overall_summary)
-                else:
-                    st.markdown(overall_summary)
-                    st.markdown("### Story Potential")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**✔️ Advantages**")
-                        st.markdown(overall_pros)
-                    with col2:
-                        st.markdown("**❌ Challenges**")
-                        st.markdown(overall_cons)
-                    
-                    st.markdown("### Related Sources")
-                    for result in results:
-                        render_web_citation({
-                            'filename': result['filename'],
-                            'snippet': result['snippet'],
-                            'link': result['link']
-                        })
+    try:
+        # Load or create the document index with a spinner
+        with st.spinner("Loading document index..."):
+            index = create_index()
+            if index:
+                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
             else:
-                st.error("Please enter a topic to search.")
-    
-    else:
-        # Existing functionality to search the drive
-        try:
-            # Load or create the document index with a spinner
-            with st.spinner("Loading document index..."):
-                index = create_index()
-                if index:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Loaded Successfully</div></div>', unsafe_allow_html=True)
-                else:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to load index.</div></div>', unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Error loading index: {str(e)}")
-            return
+                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+    except Exception as e:
+        st.error(f"Error creating index: {str(e)}")
+        return
 
-        # Initialize chat history in session state
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
+    # Initialize chat history in session state
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": {
+                "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
+                "primary_citations": [],
+                "secondary_citations": []
+            }
+        })
+
+    # Display existing chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            if isinstance(message["content"], dict):
+                st.markdown(message["content"]["answer"])
+                if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
+                    st.markdown("### Sources")
+                    for citation in message["content"].get("primary_citations", []):
+                        render_citation(citation)
+                    for citation in message["content"].get("secondary_citations", []):
+                        render_citation(citation)
+            else:
+                st.markdown(message["content"])
+
+    # Handle user input
+    if prompt := st.chat_input("Ask me about your documents"):
+        # Append user message to session state
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            
+        try:
+            # Generate assistant response with a spinner
+            with st.spinner("Thinking..."):
+                response = generate_response(index, prompt)
+            
+            # Ensure response is not empty
+            if not response.get("answer"):
+                response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
+            
+            # Append assistant response to session state
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": {
-                    "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
-                    "primary_citations": [],
-                    "secondary_citations": []
-                }
+                "content": response
             })
-
-        # Display existing chat messages
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                if isinstance(message["content"], dict):
-                    st.markdown(message["content"]["answer"])
-                    if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
-                        st.markdown("### Sources")
-                        for citation in message["content"].get("primary_citations", []):
-                            render_drive_citation(citation)
-                        for citation in message["content"].get("secondary_citations", []):
-                            render_drive_citation(citation)
-                else:
-                    st.markdown(message["content"])
-
-        # Handle user input with Enter key using form
-        with st.form(key='drive_chat_form', clear_on_submit=True):
-            prompt = st.text_input("Ask me about your documents")
-            submit_button = st.form_submit_button(label="Send")
+            
+            # Display assistant response
+            with st.chat_message("assistant"):
+                st.markdown(response["answer"])
+                if response.get("primary_citations") or response.get("secondary_citations"):
+                    st.markdown("### Sources")
+                    for citation in response.get("primary_citations", []):
+                        render_citation(citation)
+                    for citation in response.get("secondary_citations", []):
+                        render_citation(citation)
         
-        if submit_button and prompt:
-            # Append user message to session state
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            try:
-                # Generate assistant response with a spinner
-                with st.spinner("Thinking..."):
-                    response = generate_response(index, prompt)
-            
-                # Ensure response is not empty
-                if not response.get("answer"):
-                    response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-            
-                # Append assistant response to session state
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response
-                })
-            
-                # Display assistant response
-                with st.chat_message("assistant"):
-                    format_response(response)
-            
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
+        except Exception as e:
+            st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
