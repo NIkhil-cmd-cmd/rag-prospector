@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-SERVICE_ACCOUNT_FILE = '/Users/mac/Downloads/project/project-441008-38ab78b32a88.json'
+SERVICE_ACCOUNT_FILE = 'project-441008-38ab78b32a88.json'
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
