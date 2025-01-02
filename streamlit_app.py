@@ -29,8 +29,18 @@ SERVICE_ACCOUNT_FILE = 'project-441008-38ab78b32a88.json'
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
-# Set your OpenAI API key
-os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
+# Set your OpenAI API key from Streamlit secrets
+os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_API_KEY"]
+
+# Load service account credentials from Streamlit secrets
+service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
+
+# Create credentials using the service account info
+creds = service_account.Credentials.from_service_account_info(service_account_info)
+
+# Build the Google Drive service
+service = build('drive', 'v3', credentials=creds)
+
 
 @st.cache_resource
 def get_drive_service():
