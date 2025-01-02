@@ -38,7 +38,7 @@ creds = service_account.Credentials.from_service_account_info(service_account_in
 # Build the Google Drive service
 service = build('drive', 'v3', credentials=creds)
 
-FOLDER_ID = '1rbD3DdKGhvcLKJ1b7ZiSzHpfSXW9S76B'
+FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
 @st.cache_resource
 def get_drive_service():
@@ -293,6 +293,10 @@ def generate_response(index, user_input):
             "secondary_citations": []
         }
     
+    # Pre-prompt for semantic search
+    pre_prompt = "You are searching for a journalistic topic. Please provide relevant details."
+    user_input = f"{pre_prompt} {user_input}"
+
     retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
     postprocessor = SimilarityPostprocessor(similarity_cutoff=0.77)
     query_engine = RetrieverQueryEngine.from_args(
@@ -620,35 +624,41 @@ def set_dark_theme():
 
 def search_web(topic):
     """Search Google for the given topic and return a summary and links."""
+    if not is_journalistic_topic(topic):
+        return "Please enter a valid journalistic topic for research."
+
     try:
         # Perform Google search
         search_results = list(search(topic, num_results=5))  # Get top 5 results
-        summaries = []
-        
+        overall_summary = f"Here are some resources I found for '{topic}':"
+        overall_pros = "Relevant to current events, potential for deep analysis."
+        overall_cons = "May require extensive research, could be sensitive in nature."
+
+        formatted_results = []
         for result in search_results:
             # Fetch the page content
             response = requests.get(result)
             soup = BeautifulSoup(response.text, 'html.parser')
-            
+
             # Extract title and summary
             title = soup.title.string if soup.title else "No Title"
             summary = soup.get_text()[:200] + "..."  # Get first 200 characters as summary
-            
-            # Add pros and cons (this is a placeholder; you can customize this logic)
-            pros = "Relevant to current events, potential for deep analysis."
-            cons = "May require extensive research, could be sensitive in nature."
-            
-            summaries.append({
+
+            formatted_results.append({
                 "title": title,
                 "link": result,
-                "summary": summary,
-                "pros": pros,
-                "cons": cons
+                "summary": summary
             })
-        
-        return summaries
+
+        return overall_summary, overall_pros, overall_cons, formatted_results
     except Exception as e:
-        return f"An error occurred while searching: {str(e)}"
+        return f"An error occurred while searching: {str(e)}", [], [], []
+
+def is_journalistic_topic(topic):
+    """Check if the topic is related to journalism."""
+    # Simple check for common journalistic keywords
+    journalistic_keywords = ["news", "report", "investigate", "journalism", "story", "article", "pitch"]
+    return any(keyword in topic.lower() for keyword in journalistic_keywords)
 
 def main():
     # Set up Streamlit page configuration
@@ -677,14 +687,15 @@ def main():
         topic = st.text_input("Enter the topic you want to research:")
         if st.button("Search"):
             if topic:
-                results = search_web(topic)
-                st.write(f"Here are some resources I found for '{topic}':")
+                overall_summary, overall_pros, overall_cons, results = search_web(topic)
+                st.write(overall_summary)
+                st.write("**Overall Pros:** " + overall_pros)
+                st.write("**Overall Cons:** " + overall_cons)
+                st.write("### Related Links:")
                 for result in results:
-                    st.markdown(f"### {result['title']}")
+                    st.markdown(f"#### {result['title']}")
                     st.markdown(f"[Link]({result['link']})")
                     st.write(result['summary'])
-                    st.write("**Pros:** " + result['pros'])
-                    st.write("**Cons:** " + result['cons'])
             else:
                 st.error("Please enter a topic to search.")
     else:
@@ -694,11 +705,11 @@ def main():
             with st.spinner("Loading document index..."):
                 index = create_index()
                 if index:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Loaded Successfully</div></div>', unsafe_allow_html=True)
                 else:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to load index.</div></div>', unsafe_allow_html=True)
         except Exception as e:
-            st.error(f"Error creating index: {str(e)}")
+            st.error(f"Error loading index: {str(e)}")
             return
 
     # Initialize chat history in session state
