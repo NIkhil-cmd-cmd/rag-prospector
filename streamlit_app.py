@@ -15,7 +15,6 @@ from docx import Document as DocxDocument
 from llama_index.core.storage import StorageContext
 import pickle
 import hashlib
-from datetime import datetime
 import json
 from pathlib import Path
 import logging
@@ -23,11 +22,6 @@ import logging
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Configuration
-SERVICE_ACCOUNT_FILE = 'project-441008-38ab78b32a88.json'
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
-FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
 # Set your OpenAI API key from Streamlit secrets
 os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
@@ -41,13 +35,13 @@ creds = service_account.Credentials.from_service_account_info(service_account_in
 # Build the Google Drive service
 service = build('drive', 'v3', credentials=creds)
 
+# Other functions remain unchanged...
 
 @st.cache_resource
 def get_drive_service():
-    creds = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
 
+# The rest of your code continues...
 def get_file_content(service, file_id, mime_type):
     try:
         if mime_type == 'application/vnd.google-apps.document':
