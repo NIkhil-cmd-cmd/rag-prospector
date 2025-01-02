@@ -287,7 +287,7 @@ def generate_response(index, user_input):
         }
     
     # Pre-prompt for semantic search
-    pre_prompt = "You are searching for a journalistic topic. Please provide relevant details."
+    pre_prompt = "Find topics related to the following:"
     user_input = f"{pre_prompt} {user_input}"
 
     retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
@@ -629,9 +629,6 @@ def set_dark_theme():
 
 def search_web(topic):
     """Search Google for the given topic and return a summary and links with LLM-generated analysis."""
-    if not is_journalistic_topic(topic):
-        return "Please enter a valid journalistic topic for research.", "", "", []
-    
     try:
         # Perform Google search
         search_results = list(search(topic, num_results=5))
@@ -707,11 +704,14 @@ def main():
     search_type = sidebar_container.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
     
     if search_type == "Search Web for Topic":
-        topic = st.text_input("Enter the topic you want to research:", key="search_topic")
-        if st.session_state.get('trigger_search'):
+        with st.form(key='web_search_form'):
+            topic = st.text_input("Enter the topic you want to research:", key="search_topic")
+            submitted = st.form_submit_button("Search")
+        
+        if submitted:
             if topic:
                 overall_summary, overall_pros, overall_cons, results = search_web(topic)
-                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and results == []:
+                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and not results:
                     st.error(overall_summary)
                 else:
                     st.markdown(overall_summary)
@@ -727,8 +727,8 @@ def main():
                     st.markdown("### Related Sources")
                     for result in results:
                         render_web_citation({
-                            'filename': result['title'],
-                            'snippet': result['summary'],
+                            'filename': result['filename'],
+                            'snippet': result['snippet'],
                             'link': result['link']
                         })
             else:
@@ -748,67 +748,64 @@ def main():
             st.error(f"Error loading index: {str(e)}")
             return
 
-    # Initialize chat history in session state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": {
-                "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
-                "primary_citations": [],
-                "secondary_citations": []
-            }
-        })
-
-    # Display existing chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict):
-                st.markdown(message["content"]["answer"])
-                if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
-                    st.markdown("### Sources")
-                    for citation in message["content"].get("primary_citations", []):
-                        render_drive_citation(citation)
-                    for citation in message["content"].get("secondary_citations", []):
-                        render_drive_citation(citation)
-            else:
-                st.markdown(message["content"])
-
-    # Handle user input with Enter key
-    prompt = st.chat_input("Ask me about your documents")
-    if prompt:
-        # Append user message to session state
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        try:
-            # Generate assistant response with a spinner
-            with st.spinner("Thinking..."):
-                response = generate_response(index, prompt)
-        
-            # Ensure response is not empty
-            if not response.get("answer"):
-                response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-        
-            # Append assistant response to session state
+        # Initialize chat history in session state
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": response
+                "content": {
+                    "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
+                    "primary_citations": [],
+                    "secondary_citations": []
+                }
             })
-        
-            # Display assistant response
-            with st.chat_message("assistant"):
-                format_response(response)
-        
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
 
-    # Trigger search when Enter is pressed
-    if 'search_topic' in st.session_state:
-        if st.session_state.search_topic and not st.session_state.get('trigger_search', False):
-            st.session_state['trigger_search'] = True
-            st.experimental_rerun()
+        # Display existing chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                if isinstance(message["content"], dict):
+                    st.markdown(message["content"]["answer"])
+                    if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
+                        st.markdown("### Sources")
+                        for citation in message["content"].get("primary_citations", []):
+                            render_drive_citation(citation)
+                        for citation in message["content"].get("secondary_citations", []):
+                            render_drive_citation(citation)
+                else:
+                    st.markdown(message["content"])
+
+        # Handle user input with Enter key using form
+        with st.form(key='drive_chat_form', clear_on_submit=True):
+            prompt = st.text_input("Ask me about your documents")
+            submit_button = st.form_submit_button(label="Send")
+        
+        if submit_button and prompt:
+            # Append user message to session state
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            try:
+                # Generate assistant response with a spinner
+                with st.spinner("Thinking..."):
+                    response = generate_response(index, prompt)
+            
+                # Ensure response is not empty
+                if not response.get("answer"):
+                    response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
+            
+                # Append assistant response to session state
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response
+                })
+            
+                # Display assistant response
+                with st.chat_message("assistant"):
+                    format_response(response)
+            
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
