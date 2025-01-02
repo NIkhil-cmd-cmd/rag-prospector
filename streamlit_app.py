@@ -763,9 +763,9 @@ def main():
     create_chat_interface()
     
     # Add action selection with descriptions
-    st.write("### Choose Your Action")
+    st.write("### Choose A Mode")
     
-    action = st.radio("Select Action", 
+    action = st.radio("Select", 
                      ["Research Topic", "Critique Pitch", "Check Originality"], 
                      horizontal=True,
                      key="action_select")
