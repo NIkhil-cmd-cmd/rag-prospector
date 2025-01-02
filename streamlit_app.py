@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set your OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["OPEN_AI_KEY"]
+OpenAI.api_key = st.secrets["OPEN_AI_KEY"]
 
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
