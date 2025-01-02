@@ -701,7 +701,7 @@ def main():
     if data_source != st.session_state.prev_data_source:
         st.session_state.messages = []
         st.session_state.prev_data_source = data_source
-        st.experimental_rerun()
+        st.rerun()
     
     # Create header
     create_header()
