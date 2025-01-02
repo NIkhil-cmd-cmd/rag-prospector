@@ -661,7 +661,7 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        client = openai.OpenAI()  # Create client instance
+        client = openai.OpenAI(api_key=st.secrets["OPEN_AI_KEY"])  # Initialize with API key
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
