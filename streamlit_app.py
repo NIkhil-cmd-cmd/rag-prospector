@@ -18,6 +18,7 @@ import hashlib
 import json
 from pathlib import Path
 import logging
+from googlesearch import search
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -250,7 +251,7 @@ def create_index():
         if index is not None:
             st.write("Using existing index")
             return index
-            
+        
         # If no index exists, create new one
         st.write("Creating new index...")
         documents = get_drive_documents()
@@ -260,11 +261,11 @@ def create_index():
         for doc in documents:
             chunks = get_document_chunks(doc)
             if isinstance(chunks, str):
-                doc.text = chunks
+                doc = Document(text=chunks, metadata=doc.metadata)  # Use constructor instead of setting text directly
             else:
-                doc.text = "\n\n".join(chunks)
+                doc = Document(text="\n\n".join(chunks), metadata=doc.metadata)  # Use constructor instead of setting text directly
             processed_docs.append(doc)
-            
+        
         # Create new index
         index = VectorStoreIndex.from_documents(
             processed_docs,
@@ -275,9 +276,9 @@ def create_index():
         doc_states = get_document_states()
         if save_index(index, doc_states):
             st.write("Index created and saved successfully")
-            
+        
         return index
-            
+        
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return None
@@ -615,6 +616,17 @@ def set_dark_theme():
         </style>
     """, unsafe_allow_html=True)
 
+def search_web(topic):
+    """Search Google for the given topic and return a summary and links."""
+    try:
+        # Perform Google search
+        search_results = list(search(topic, num_results=5))  # Get top 5 results
+        summary = f"Here are some resources I found for '{topic}':"
+        
+        return summary, search_results
+    except Exception as e:
+        return f"An error occurred while searching: {str(e)}", []
+
 def main():
     # Set up Streamlit page configuration
     st.set_page_config(
@@ -635,17 +647,33 @@ def main():
     # Create chat interface styles
     create_chat_interface()
     
-    try:
-        # Load or create the document index with a spinner
-        with st.spinner("Loading document index..."):
-            index = create_index()
-            if index:
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
+    # Dropdown for selecting search type
+    search_type = st.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
+    
+    if search_type == "Search Web for Topic":
+        topic = st.text_input("Enter the topic you want to research:")
+        if st.button("Search"):
+            if topic:
+                summary, links = search_web(topic)
+                st.write(summary)
+                st.write("Related Links:")
+                for link in links:
+                    st.markdown(f"- [Link]({link})")
             else:
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Error creating index: {str(e)}")
-        return
+                st.error("Please enter a topic to search.")
+    else:
+        # Existing functionality to search the drive
+        try:
+            # Load or create the document index with a spinner
+            with st.spinner("Loading document index..."):
+                index = create_index()
+                if index:
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
+                else:
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error creating index: {str(e)}")
+            return
 
     # Initialize chat history in session state
     if "messages" not in st.session_state:
@@ -679,7 +707,7 @@ def main():
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
-            
+        
         try:
             # Generate assistant response with a spinner
             with st.spinner("Thinking..."):
