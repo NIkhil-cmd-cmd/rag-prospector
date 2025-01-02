@@ -4,7 +4,6 @@ from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.retrievers import VectorIndexRetriever
 from llama_index.core.query_engine import RetrieverQueryEngine
 from llama_index.core.postprocessor import SimilarityPostprocessor
-from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
@@ -18,6 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 import logging
+import openai  # Import OpenAI SDK
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
@@ -27,10 +27,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set your OpenAI API key from Streamlit secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
-
-# Initialize the OpenAI LLM
-llm = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+openai.api_key = st.secrets["OPEN_AI_KEY"]
 
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
@@ -578,14 +575,6 @@ def create_chat_interface():
         .stChatInput {border-color: rgba(255, 255, 255, 0.1) !important; background: rgba(255, 255, 255, 0.05) !important;}
         </style>
     """, unsafe_allow_html=True)
-    
-    # Add a dropdown to select between searching the web or the drive
-    search_option = st.sidebar.selectbox(
-        "Choose search option:",
-        ["Search Web", "Search Drive"]
-    )
-    
-    st.write(f"You selected: {search_option}")
 
 def set_dark_theme():
     st.markdown("""
@@ -644,7 +633,7 @@ def search_web(topic):
         Keep each point brief and focused on journalistic value.
         """
         
-        analysis = llm.query(llm_prompt, max_tokens=150, temperature=0.7).strip()
+        analysis = generate_openai_response(llm_prompt)
         pros_cons = analysis.split("\n")
         overall_pros = "\n".join([p for p in pros_cons if any(word in p.lower() for word in ["compelling", "good", "advantage", "reason"])])
         overall_cons = "\n".join([c for c in pros_cons if any(word in c.lower() for word in ["challenge", "consideration", "limitation"])])
@@ -663,7 +652,7 @@ def search_web(topic):
                     "link": result,
                     "snippet": summary
                 })
-            except Exception as e:
+            except Exception:
                 continue
 
         return "**Journalism Story Analysis:**", overall_pros, overall_cons, formatted_results
@@ -672,8 +661,15 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        response = llm.query(prompt, max_tokens=150, temperature=0.7)
-        return response.strip()
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=150,
+            temperature=0.7
+        )
+        return response.choices[0].message['content'].strip()
     except Exception as e:
         return f"An error occurred while generating a response: {str(e)}"
 
@@ -688,8 +684,23 @@ def main():
     # Apply dark theme
     set_dark_theme()
     
-    # Initialize sidebar with logging
+    # Initialize sidebar with logging and data source selection
     sidebar_container = create_logging_sidebar()
+    
+    # Add data source selection to sidebar
+    if 'data_source' not in st.session_state:
+        st.session_state.data_source = 'Drive'
+    
+    data_source = st.sidebar.selectbox("Select Data Source", ['Drive', 'Google'], key='data_source_select')
+    
+    # Reset chat when data source changes
+    if 'prev_data_source' not in st.session_state:
+        st.session_state.prev_data_source = data_source
+
+    if data_source != st.session_state.prev_data_source:
+        st.session_state.messages = []
+        st.session_state.prev_data_source = data_source
+        st.experimental_rerun()
     
     # Create header
     create_header()
@@ -700,11 +711,17 @@ def main():
     try:
         # Load or create the document index with a spinner
         with st.spinner("Loading document index..."):
-            index = create_index()
-            if index:
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
-            else:
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+            if data_source == 'Drive':
+                index = create_index()
+                if index:
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
+                else:
+                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+            elif data_source == 'Google':
+                # Placeholder for Google data source integration
+                index = None
+                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-loading"></div><div class="status-text">🔄 Switching to Google...</div></div>', unsafe_allow_html=True)
+                st.warning("Google data source is not yet implemented.")
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
