@@ -30,7 +30,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
 # Set your OpenAI API key
-os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_API_KEY"]
+os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
 
 @st.cache_resource
 def get_drive_service():
