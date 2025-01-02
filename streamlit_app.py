@@ -732,20 +732,14 @@ def main():
                 index = None
                 sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">🔍 Google Search Ready</div></div>', unsafe_allow_html=True)
                 
-                if prompt := st.chat_input("Enter a topic to research", key="google_chat"):
+                if prompt := st.chat_input("Enter a topic to research", key="google_search"):
                     with st.spinner("Searching and analyzing..."):
                         analysis, search_results = search_web(prompt)
                         
-                        # Create a clean card-like display
-                        st.markdown("""
-                        <div style='background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-                            <h3 style='color: #ffffff; margin-bottom: 15px;'>Analysis</h3>
-                            <p style='color: #ffffff;'>{}</p>
-                        </div>
-                        """.format(analysis), unsafe_allow_html=True)
-                        
-                        st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Related Articles</h3>", unsafe_allow_html=True)
-                        st.markdown(search_results)
+                        # Display analysis and results
+                        st.write(analysis)
+                        st.write("\nRelated Articles:")
+                        st.write(search_results)
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
@@ -808,20 +802,14 @@ def main():
                 st.error(f"An error occurred: {str(e)}")
 
     elif data_source == 'Google':
-        if prompt := st.chat_input("Enter a topic to research", key="google_chat"):
+        if prompt := st.chat_input("Enter a topic to research", key="google_search"):
             with st.spinner("Searching and analyzing..."):
                 analysis, search_results = search_web(prompt)
                 
-                # Create a clean card-like display
-                st.markdown("""
-                <div style='background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
-                    <h3 style='color: #ffffff; margin-bottom: 15px;'>Analysis</h3>
-                    <p style='color: #ffffff;'>{}</p>
-                </div>
-                """.format(analysis), unsafe_allow_html=True)
-                
-                st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Related Articles</h3>", unsafe_allow_html=True)
-                st.markdown(search_results)
+                # Display analysis and results
+                st.write(analysis)
+                st.write("\nRelated Articles:")
+                st.write(search_results)
 
 if __name__ == "__main__":
     main()
