@@ -41,6 +41,9 @@ service = build('drive', 'v3', credentials=creds)
 
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
+# Initialize the OpenAI LLM
+llm = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
 @st.cache_resource
 def get_drive_service():
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
