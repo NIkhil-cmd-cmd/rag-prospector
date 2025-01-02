@@ -447,7 +447,7 @@ def create_logging_sidebar():
     return container
 
 def create_header():
-    st.title("🦫 Prospector")
+    st.title("🦫 Prospector Pitch Assistant")
     st.caption("An AI Assistant for Our Drive Folder")
 
 def format_response(response_dict):
@@ -661,6 +661,36 @@ def generate_openai_response(prompt):
     except Exception as e:
         return f"An error occurred while generating a response: {str(e)}"
 
+def analyze_pitch(pitch, section):
+    try:
+        analysis_prompt = f"""
+        Analyze this pitch for the {section} section of a high school newspaper:
+
+        Pitch: {pitch}
+
+        Provide a detailed analysis covering:
+        1. Strengths (2-3 points)
+        2. Areas for Improvement (2-3 points)
+        3. Specific suggestions to enhance the pitch
+        4. Whether it meets the section guidelines
+        5. Research suggestions to strengthen the story
+
+        Base your analysis on these key criteria:
+        - Relevance to the school community
+        - Timeliness and newsworthiness
+        - Uniqueness of perspective
+        - Depth and complexity
+        - Feasibility of reporting
+        
+        Format the response clearly with headers and bullet points.
+        Include 2-3 specific research directions or sources to explore.
+        """
+        
+        analysis = generate_openai_response(analysis_prompt)
+        return analysis
+    except Exception as e:
+        return f"Error analyzing pitch: {str(e)}"
+
 def main():
     # Set up Streamlit page configuration
     st.set_page_config(
@@ -768,14 +798,43 @@ def main():
                 st.error(f"An error occurred: {str(e)}")
 
     elif data_source == 'Google':
-        if prompt := st.chat_input("Enter a topic to research", key="google_searching"):
-            with st.spinner("Searching and analyzing..."):
-                analysis, search_results = search_web(prompt)
-                
-                # Display analysis and results
-                st.write(analysis)
-                st.write("\nRelated Articles:")
-                st.write(search_results)
+        # Add section selection for pitch critique
+        action = st.radio("Select Action", ["Research Topic", "Critique Pitch"], key="google_action")
+        
+        if action == "Research Topic":
+            if prompt := st.chat_input("Enter a topic to research", key="google_search"):
+                with st.spinner("Searching and analyzing..."):
+                    analysis, search_results = search_web(prompt)
+                    st.write(analysis)
+                    st.write("\nRelated Articles:")
+                    st.write(search_results)
+        
+        else:  # Critique Pitch
+            section = st.selectbox(
+                "Select Section",
+                ["News", "Opinions", "Lifestyles", "Sports", "Investigations", 
+                 "Features", "Postscript", "Arts & Culture", "In-Depth", "Multimedia", "Podcast"]
+            )
+            
+            pitch = st.text_area("Enter your pitch", height=150, 
+                               placeholder="Describe your story idea in detail...")
+            
+            if st.button("Analyze Pitch"):
+                if not pitch:
+                    st.warning("Please enter a pitch to analyze.")
+                else:
+                    with st.spinner("Analyzing pitch..."):
+                        # Get pitch analysis
+                        pitch_analysis = analyze_pitch(pitch, section)
+                        st.markdown("### Pitch Analysis")
+                        st.write(pitch_analysis)
+                        
+                        # Get related research
+                        st.markdown("### Related Research")
+                        analysis, search_results = search_web(pitch)
+                        st.write(analysis)
+                        st.write("\nRelevant Articles for Research:")
+                        st.write(search_results)
 
 if __name__ == "__main__":
     main()
