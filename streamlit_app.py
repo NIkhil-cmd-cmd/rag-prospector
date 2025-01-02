@@ -763,104 +763,24 @@ def main():
     # Create chat interface styles
     create_chat_interface()
     
-    # Add data source selection to main page
-    if 'data_source' not in st.session_state:
-        st.session_state.data_source = 'Drive'
-    
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        data_source = st.selectbox("Select Data Source", ['Drive', 'Google'], key='data_source_select')
-    
-    with col2:
-        if data_source == 'Google':
-            action = st.radio("Select Action", 
-                            ["Research Topic", "Critique Pitch", "Check Originality"], 
-                            horizontal=True,
-                            key="google_action")
-
-    # Reset chat when data source changes
-    if 'prev_data_source' not in st.session_state:
-        st.session_state.prev_data_source = data_source
-
-    if data_source != st.session_state.prev_data_source:
-        st.session_state.messages = []
-        st.session_state.prev_data_source = data_source
-        st.rerun()
+    # Add action selection to main page
+    action = st.radio("Select Action", 
+                     ["Research Topic", "Critique Pitch", "Check Originality"], 
+                     horizontal=True,
+                     key="action_select")
     
     try:
-        # Load or create the document index with a spinner
-        with st.spinner("Loading document index..."):
-            if data_source == 'Drive':
+        # Load index for Drive searches when needed
+        if action == "Check Originality":
+            with st.spinner("Loading document index..."):
                 index = create_index()
                 if index:
                     st.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
-
-    except Exception as e:
-        st.error(f"Error creating index: {str(e)}")
-        return
-
-    # Initialize chat history in session state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": {
-                "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
-                "primary_citations": [],
-                "secondary_citations": []
-            }
-        })
-
-    # Display existing chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict):
-                st.markdown(message["content"]["answer"])
-                if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
-                    st.markdown("### Sources")
-                    for citation in message["content"].get("primary_citations", []):
-                        render_citation(citation)
-                    for citation in message["content"].get("secondary_citations", []):
-                        render_citation(citation)
-            else:
-                st.markdown(message["content"])
-
-    # Handle user input based on data source
-    if data_source == 'Drive':
-        if prompt := st.chat_input("Ask me about your documents", key="drive_chat"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
-            
-            try:
-                with st.spinner("Thinking..."):
-                    response = generate_response(index, prompt)
-                
-                if not response.get("answer"):
-                    response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-                
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response
-                })
-                
-                with st.chat_message("assistant"):
-                    st.markdown(response["answer"])
-                    if response.get("primary_citations") or response.get("secondary_citations"):
-                        st.markdown("### Sources")
-                        for citation in response.get("primary_citations", []):
-                            render_citation(citation)
-                        for citation in response.get("secondary_citations", []):
-                            render_citation(citation)
-            
-            except Exception as e:
-                st.error(f"An error occurred: {str(e)}")
-
-    elif data_source == 'Google':
+        
         if action == "Research Topic":
-            if prompt := st.chat_input("Enter a topic to research", key="google_search"):
+            if prompt := st.chat_input("Enter a topic to research", key="research_input"):
                 with st.spinner("Searching and analyzing..."):
                     analysis, search_results = search_web(prompt)
                     st.write(analysis)
@@ -885,12 +805,26 @@ def main():
                     st.warning("Please enter a pitch to analyze.")
                 else:
                     with st.spinner("Analyzing originality..."):
-                        originality_analysis, similar_articles = check_originality(pitch, section)
-                        st.markdown("### Originality Analysis")
-                        st.write(originality_analysis)
+                        # Check Drive documents
+                        drive_response = generate_response(index, pitch)
                         
+                        # Check Prospector website
+                        originality_analysis, similar_articles = check_originality(pitch, section)
+                        
+                        # Display results
+                        st.markdown("### Drive Document Analysis")
+                        st.write(drive_response["answer"])
+                        if drive_response.get("primary_citations") or drive_response.get("secondary_citations"):
+                            st.markdown("### Related Drive Documents")
+                            for citation in drive_response.get("primary_citations", []):
+                                render_citation(citation)
+                            for citation in drive_response.get("secondary_citations", []):
+                                render_citation(citation)
+                        
+                        st.markdown("### Web Analysis")
+                        st.write(originality_analysis)
                         if similar_articles:
-                            st.markdown("### Similar Articles Found")
+                            st.markdown("### Similar Published Articles")
                             for article in similar_articles:
                                 st.markdown(f"**[{article['title']}]({article['url']})**")
                                 st.write(article['content'][:200] + "...")
@@ -899,28 +833,32 @@ def main():
             section = st.selectbox(
                 "Select Section",
                 ["News", "Opinions", "Lifestyles", "Sports", "Investigations", 
-                 "Features", "Postscript", "Arts & Culture", "In-Depth", "Multimedia", "Podcast"]
+                 "Features", "Postscript", "Arts & Culture", "In-Depth", "Multimedia", "Podcast"],
+                key="critique_section"
             )
             
-            pitch = st.text_area("Enter your pitch", height=150, 
-                               placeholder="Describe your story idea in detail...")
+            pitch = st.text_area("Enter your pitch", 
+                               height=150,
+                               placeholder="Describe your story idea in detail...",
+                               key="critique_pitch")
             
             if st.button("Analyze Pitch"):
                 if not pitch:
                     st.warning("Please enter a pitch to analyze.")
                 else:
                     with st.spinner("Analyzing pitch..."):
-                        # Get pitch analysis
                         pitch_analysis = analyze_pitch(pitch, section)
                         st.markdown("### Pitch Analysis")
                         st.write(pitch_analysis)
                         
-                        # Get related research
                         st.markdown("### Related Research")
                         analysis, search_results = search_web(pitch)
                         st.write(analysis)
                         st.write("\nRelevant Articles for Research:")
                         st.write(search_results)
+
+    except Exception as e:
+        st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
