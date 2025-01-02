@@ -448,56 +448,8 @@ def create_logging_sidebar():
     return container
 
 def create_header():
-    """Create modern header with logo"""
-    capybara_svg = """
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="24" height="24" style="fill: currentColor;">
-        <path d="M374 74.47c-7.1.26-10.8 6.79-4.3 15.89l24-3.41c-6.5-9.11-14.1-12.69-19.7-12.48zm-38 9.1c-3.5 0-6.6 1.01-9 2.73c-7.1 5.1-7.6 16.8 7.9 28c-8.9 15.9-29.8 45.8-60.2 43.2l32.1 9.8c-2.7 1.6-5.7 3.1-9.2 4.5C118.7 119.4 29.29 275.1 29.29 275.1c51.1 69.9 4.1 98.9 4.1 98.9l7.81 63h28.81l3.19-41s32.5-3 62.8-63.3c29 9.8 71 9.1 102.6 3.3l-4.1 7.1l-37.4 11.1c31.2 2.8 58.5-2.3 78.7-8.5c-3.4-15.1-4.5-31.5 3.5-52.8L307.2 437h25.9s-4.6-75 34.4-143.5c5-7.8 9.4-15.1 13.1-23.7l2 11.1l-10.5 23.2s39-15.7 29.2-96c23 3.9 45.6 1.7 66.6-4.6c5.3-1.7 9.5-5.8 11.2-11c5-15.6 9.5-32.5 10.4-47.3l-9.7.8c-.2-15.3-21.2-13.1-14.9.8l-10.5.5l-4.9-15.5s16.9-12.3 38.4-7.1c-.9-3.2-2.2-6-3.9-8.6c-13.8-20.8-54.3-27.8-122.4-15.6c-8-12.24-17.8-16.96-25.6-16.93zm49.9 33.83c12.4 1.4 21.9 4.3 30.2 9.6h-15.9c-1.6 4.8-7.5 8.4-14.5 8.4s-12.9-3.6-14.5-8.4h-15.5c4.2-3 15.3-9.7 30.2-9.6zm9.6 181.6c-15.2 30.3-34.5 33.8-34.5 33.8c-13.4 37.7-10.4 71.8 1.8 103.9H385c-3.8-44.7-3.2-78.4 10.5-137.7zm-251.1 50.3L126.6 376l27.2 25.1l13.9 35.6h29.9l-20.1-81.8z"/>
-    </svg>
-    """
-    
-    st.markdown(f"""
-        <style>
-        .header-container {{
-            display: flex;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 24px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }}
-        .logo {{
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            margin-right: 16px;
-            color: #ffffff;
-        }}
-        .title {{
-            font-size: 24px;
-            font-weight: 500;
-            color: #ffffff;
-            margin: 0;
-        }}
-        .subtitle {{
-            font-size: 14px;
-            color: #888;
-            margin: 4px 0 0 0;
-        }}
-        </style>
-        <div class="header-container">
-            <div class="logo">
-                {capybara_svg}
-            </div>
-            <div>
-                <h1 class="title">Prospector</h1>
-                <p class="subtitle">An AI Assistant for Our Drive Folder</p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+    st.title("🦫 Prospector")
+    st.caption("An AI Assistant for Our Drive Folder")
 
 def format_response(response_dict):
     """Format the chatbot response in a modern style"""
@@ -624,50 +576,52 @@ def set_dark_theme():
 
 def search_web(topic):
     try:
-        # Perform Google search
-        search_results = list(search(topic, num_results=5))
+        # Add journalism-specific search terms
+        search_query = f"{topic} site:nytimes.com OR site:wsj.com OR site:reuters.com OR site:apnews.com OR site:theguardian.com"
+        search_results = list(search(search_query, num_results=5))
         
         # Generate analysis using LLM
         llm_prompt = f"""
         Analyze this topic as a potential news story: "{topic}"
-        Provide a brief analysis of its journalistic value, including key strengths and challenges.
-        Keep the analysis concise and professional.
+        Focus on its journalistic value and newsworthiness.
+        Consider:
+        1. Current relevance and timeliness
+        2. Public interest and impact
+        3. Unique angles or perspectives
+        Provide a concise, professional analysis.
         """
         
         analysis = generate_openai_response(llm_prompt)
         
         # Format search results
-        raw_results = []
+        formatted_results = []
         for result in search_results:
             try:
                 response = requests.get(result, timeout=10)
                 soup = BeautifulSoup(response.text, 'html.parser')
                 title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
-                summary = ' '.join(soup.get_text().split())[:200] + "..."
-                raw_results.append({
+                # Extract publication date and author if available
+                meta_date = soup.find('meta', {'property': 'article:published_time'}) or soup.find('meta', {'name': 'publication_date'})
+                date = meta_date['content'].split('T')[0] if meta_date else "Date not available"
+                
+                formatted_results.append({
                     "title": title,
-                    "link": result,
-                    "summary": summary
+                    "date": date,
+                    "source": result.split('/')[2],
+                    "url": result
                 })
             except Exception:
                 continue
-
-        # Clean up results with LLM
-        results_prompt = f"""
-        Clean up and summarize these search results about "{topic}":
-        {raw_results}
         
-        For each result, provide:
-        1. A clear, concise title
-        2. A 1-2 sentence summary of the key points
-        Keep the language professional and journalistic.
-        """
+        # Format results as markdown
+        results_markdown = "### Related Articles\n\n"
+        for result in formatted_results:
+            results_markdown += f"📰 **[{result['title']}]({result['url']})**\n"
+            results_markdown += f"*{result['source']} - {result['date']}*\n\n"
         
-        cleaned_results = generate_openai_response(results_prompt)
-        
-        return analysis, cleaned_results
+        return analysis, results_markdown
     except Exception as e:
-        return f"Error: {str(e)}", []
+        return f"Error: {str(e)}", "No articles found."
 
 def generate_openai_response(prompt):
     try:
