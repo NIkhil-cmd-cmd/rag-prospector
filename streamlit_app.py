@@ -661,7 +661,8 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        response = openai.ChatCompletion.create(
+        client = openai.OpenAI()  # Create client instance
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": prompt}
@@ -669,7 +670,7 @@ def generate_openai_response(prompt):
             max_tokens=150,
             temperature=0.7
         )
-        return response.choices[0].message['content'].strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"An error occurred while generating a response: {str(e)}"
 
