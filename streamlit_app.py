@@ -732,7 +732,7 @@ def main():
                 index = None
                 sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">🔍 Google Search Ready</div></div>', unsafe_allow_html=True)
                 
-                if prompt := st.chat_input("Enter a topic to research", key="google_search"):
+                if prompt := st.chat_input("Enter a topic to research", key="google_chat_input"):
                     with st.spinner("Searching and analyzing..."):
                         analysis, search_results = search_web(prompt)
                         
@@ -802,7 +802,7 @@ def main():
                 st.error(f"An error occurred: {str(e)}")
 
     elif data_source == 'Google':
-        if prompt := st.chat_input("Enter a topic to research", key="google_search"):
+        if prompt := st.chat_input("Enter a topic to research", key="google_chat_input"):
             with st.spinner("Searching and analyzing..."):
                 analysis, search_results = search_web(prompt)
                 
