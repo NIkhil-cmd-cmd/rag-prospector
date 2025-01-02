@@ -575,50 +575,66 @@ def set_dark_theme():
 
 def search_web(topic):
     try:
-        # Add journalism-specific search terms
-        search_query = f"{topic} site:nytimes.com OR site:wsj.com OR site:reuters.com OR site:apnews.com OR site:theguardian.com"
-        search_results = list(search(search_query, num_results=5))
+        # Search for high-quality journalism articles
+        search_results = list(search(
+            f"{topic} journalism analysis report investigation",
+            num_results=10  # Get more results to filter
+        ))
         
-        # Generate analysis using LLM
-        llm_prompt = f"""
-        Analyze this topic as a potential news story: "{topic}"
-        Focus on its journalistic value and newsworthiness.
-        Consider:
-        1. Current relevance and timeliness
-        2. Public interest and impact
-        3. Unique angles or perspectives
-        Provide a concise, professional analysis.
-        """
-        
-        analysis = generate_openai_response(llm_prompt)
-        
-        # Format search results
-        formatted_results = []
-        for result in search_results:
+        # Get detailed content for each result
+        detailed_results = []
+        for url in search_results:
             try:
-                response = requests.get(result, timeout=10)
+                response = requests.get(url, timeout=10)
                 soup = BeautifulSoup(response.text, 'html.parser')
-                title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
-                # Extract publication date and author if available
-                meta_date = soup.find('meta', {'property': 'article:published_time'}) or soup.find('meta', {'name': 'publication_date'})
-                date = meta_date['content'].split('T')[0] if meta_date else "Date not available"
                 
-                formatted_results.append({
-                    "title": title,
-                    "date": date,
-                    "source": result.split('/')[2],
-                    "url": result
-                })
+                # Get article content
+                article_text = ""
+                main_content = soup.find('article') or soup.find('main') or soup.find('body')
+                if main_content:
+                    paragraphs = main_content.find_all('p')
+                    article_text = ' '.join(p.get_text().strip() for p in paragraphs[:5])
+                
+                if len(article_text) > 100:  # Only include substantial articles
+                    detailed_results.append({
+                        "title": soup.title.string.strip() if soup.title else "Untitled",
+                        "url": url,
+                        "content": article_text
+                    })
             except Exception:
                 continue
         
-        # Format results as markdown
-        results_markdown = "### Related Articles\n\n"
-        for result in formatted_results:
-            results_markdown += f"📰 **[{result['title']}]({result['url']})**\n"
-            results_markdown += f"*{result['source']} - {result['date']}*\n\n"
+        # Use LLM to analyze topic and filter/summarize results
+        analysis_prompt = f"""
+        Analyze this journalistic topic: "{topic}"
+        Provide a comprehensive analysis of its news value and current relevance.
+        Focus on the most significant aspects and developments.
+        Your response should be complete and not cut off.
+        """
         
-        return analysis, results_markdown
+        analysis = generate_openai_response(analysis_prompt)
+        
+        # Have LLM curate the best articles
+        if detailed_results:
+            curation_prompt = f"""
+            Review these articles about {topic} and select only the most relevant, high-quality sources.
+            For each selected article, provide:
+            1. A clear, informative title
+            2. Why this source is particularly valuable
+            Only include articles that provide substantial, unique insights.
+            Ignore generic landing pages or superficial coverage.
+            """
+            
+            results_text = "\n\n".join([
+                f"Article: {r['title']}\nContent: {r['content'][:300]}..."
+                for r in detailed_results
+            ])
+            
+            curated_results = generate_openai_response(f"{curation_prompt}\n\nArticles to review:\n{results_text}")
+        else:
+            curated_results = "No relevant articles found."
+        
+        return analysis, curated_results
     except Exception as e:
         return f"Error: {str(e)}", "No articles found."
 
