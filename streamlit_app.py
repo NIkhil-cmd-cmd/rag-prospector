@@ -399,10 +399,14 @@ def get_document_chunks(doc):
 
 def render_citation(citation):
     """Render a citation card with relevance-based styling"""
-    score = float(citation['score'])
-    # Calculate background color based on score
-    hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
-    bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
+    score = citation.get('score', 'N/A')
+    # Set default background for N/A or calculate based on score
+    if score == 'N/A':
+        bg_color = "hsla(200, 70%, 30%, 0.2)"  # Default blue-ish background
+    else:
+        score = float(score)
+        hue = min(120, max(0, (score - 0.77) * 500))
+        bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
     
     html = f"""
     <div class="doc-card" style="background: {bg_color}; border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
@@ -775,40 +779,61 @@ def main():
             else:
                 st.markdown(message["content"])
 
-    # Handle user input
-    if prompt := st.chat_input("Ask me about your documents"):
-        # Append user message to session state
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    # Handle user input based on data source
+    if data_source == 'Drive':
+        if prompt := st.chat_input("Ask me about your documents"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
             
-        try:
-            # Generate assistant response with a spinner
-            with st.spinner("Thinking..."):
-                response = generate_response(index, prompt)
+            try:
+                with st.spinner("Thinking..."):
+                    response = generate_response(index, prompt)
+                
+                if not response.get("answer"):
+                    response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
+                
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response
+                })
+                
+                with st.chat_message("assistant"):
+                    st.markdown(response["answer"])
+                    if response.get("primary_citations") or response.get("secondary_citations"):
+                        st.markdown("### Sources")
+                        for citation in response.get("primary_citations", []):
+                            render_citation(citation)
+                        for citation in response.get("secondary_citations", []):
+                            render_citation(citation)
             
-            # Ensure response is not empty
-            if not response.get("answer"):
-                response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-            
-            # Append assistant response to session state
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            
-            # Display assistant response
-            with st.chat_message("assistant"):
-                st.markdown(response["answer"])
-                if response.get("primary_citations") or response.get("secondary_citations"):
-                    st.markdown("### Sources")
-                    for citation in response.get("primary_citations", []):
-                        render_citation(citation)
-                    for citation in response.get("secondary_citations", []):
-                        render_citation(citation)
-        
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
+
+    elif data_source == 'Google':
+        if prompt := st.chat_input("Enter a topic to research"):
+            with st.spinner("Searching and analyzing..."):
+                analysis_header, pros, cons, search_results = search_web(prompt)
+                
+                # Display analysis
+                st.markdown(analysis_header)
+                if pros:
+                    st.markdown("### Key Strengths:")
+                    st.markdown(pros)
+                if cons:
+                    st.markdown("### Considerations:")
+                    st.markdown(cons)
+                
+                # Display search results
+                if search_results:
+                    st.markdown("### Related Articles")
+                    for result in search_results:
+                        render_citation({
+                            "filename": result["filename"],
+                            "snippet": result["snippet"],
+                            "link": result["link"],
+                            "score": "N/A"
+                        })
 
 if __name__ == "__main__":
     main()
