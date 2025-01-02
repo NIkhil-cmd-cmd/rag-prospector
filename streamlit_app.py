@@ -830,7 +830,15 @@ def main():
                         originality_analysis, similar_articles = check_originality(pitch, section)
                         
                         # Display results
-                        st.markdown("### Drive Document Analysis")
+                        st.markdown("### Pitch Analysis")
+                        st.write(originality_analysis)
+                        if similar_articles:
+                            st.markdown("### Similar Published Articles")
+                            for article in similar_articles:
+                                st.markdown(f"**[{article['title']}]({article['url']})**")
+                                st.write(article['content'][:200] + "...")
+                        
+                        st.markdown("### Exploring the Pitch")
                         st.write(drive_response["answer"])
                         if drive_response.get("primary_citations") or drive_response.get("secondary_citations"):
                             st.markdown("### Related Drive Documents")
@@ -838,14 +846,6 @@ def main():
                                 render_citation(citation)
                             for citation in drive_response.get("secondary_citations", []):
                                 render_citation(citation)
-                        
-                        st.markdown("### Web Analysis")
-                        st.write(originality_analysis)
-                        if similar_articles:
-                            st.markdown("### Similar Published Articles")
-                            for article in similar_articles:
-                                st.markdown(f"**[{article['title']}]({article['url']})**")
-                                st.write(article['content'][:200] + "...")
         
         else:  # Critique Pitch
             section = st.selectbox(
