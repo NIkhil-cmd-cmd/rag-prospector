@@ -578,7 +578,7 @@ def search_web(topic):
         # Search for high-quality journalism articles
         search_results = list(search(
             f"{topic} journalism analysis report investigation",
-            num_results=10  # Get more results to filter
+            num_results=10
         ))
         
         # Get detailed content for each result
@@ -588,14 +588,13 @@ def search_web(topic):
                 response = requests.get(url, timeout=10)
                 soup = BeautifulSoup(response.text, 'html.parser')
                 
-                # Get article content
                 article_text = ""
                 main_content = soup.find('article') or soup.find('main') or soup.find('body')
                 if main_content:
                     paragraphs = main_content.find_all('p')
                     article_text = ' '.join(p.get_text().strip() for p in paragraphs[:5])
                 
-                if len(article_text) > 100:  # Only include substantial articles
+                if len(article_text) > 100:
                     detailed_results.append({
                         "title": soup.title.string.strip() if soup.title else "Untitled",
                         "url": url,
@@ -604,29 +603,38 @@ def search_web(topic):
             except Exception:
                 continue
         
-        # Use LLM to analyze topic and filter/summarize results
+        # Analysis prompt with specific structure
         analysis_prompt = f"""
         Analyze this journalistic topic: "{topic}"
-        Provide a comprehensive analysis of its news value and current relevance.
-        Focus on the most significant aspects and developments.
-        Your response should be complete and not cut off.
+        Provide a comprehensive analysis in exactly 5-6 sentences, covering:
+        1. Current relevance and timeliness
+        2. Public interest and impact
+        3. Key developments or trends
+        Make sure to complete all thoughts and provide a well-rounded analysis.
         """
         
         analysis = generate_openai_response(analysis_prompt)
         
-        # Have LLM curate the best articles
+        # Curation prompt with specific requirements
         if detailed_results:
             curation_prompt = f"""
-            Review these articles about {topic} and select only the most relevant, high-quality sources.
-            For each selected article, provide:
-            1. A clear, informative title
-            2. Why this source is particularly valuable
-            Only include articles that provide substantial, unique insights.
-            Ignore generic landing pages or superficial coverage.
+            Review these articles about {topic} and provide a curated list of the 3-4 most valuable sources.
+            For each article, include:
+            1. The article title
+            2. A one-sentence summary of its key insight
+            3. The complete URL
+            4. The source/publication name
+
+            Format each entry as:
+            "• [Title] - [Summary]
+             Source: [Publication]
+             Link: [URL]"
+
+            Only include high-quality journalism sources with substantial coverage.
             """
             
             results_text = "\n\n".join([
-                f"Article: {r['title']}\nContent: {r['content'][:300]}..."
+                f"Article: {r['title']}\nURL: {r['url']}\nContent: {r['content'][:300]}..."
                 for r in detailed_results
             ])
             
@@ -640,13 +648,13 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        client = openai.OpenAI(api_key=st.secrets["OPEN_AI_KEY"])  # Initialize with API key
+        client = openai.OpenAI(api_key=st.secrets["OPEN_AI_KEY"])
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=150,
+            max_tokens=500,  # Increased token limit
             temperature=0.7
         )
         return response.choices[0].message.content.strip()
