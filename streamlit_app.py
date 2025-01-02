@@ -631,27 +631,41 @@ def search_web(topic):
         llm_prompt = f"""
         Analyze this topic as a potential news story: "{topic}"
         Provide a brief analysis of its journalistic value, including key strengths and challenges.
+        Keep the analysis concise and professional.
         """
         
         analysis = generate_openai_response(llm_prompt)
         
         # Format search results
-        formatted_results = []
+        raw_results = []
         for result in search_results:
             try:
                 response = requests.get(result, timeout=10)
                 soup = BeautifulSoup(response.text, 'html.parser')
                 title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
-                summary = ' '.join(soup.get_text().split())[:150] + "..."
-                formatted_results.append({
-                    "filename": title,
+                summary = ' '.join(soup.get_text().split())[:200] + "..."
+                raw_results.append({
+                    "title": title,
                     "link": result,
-                    "snippet": summary
+                    "summary": summary
                 })
             except Exception:
                 continue
 
-        return analysis, formatted_results
+        # Clean up results with LLM
+        results_prompt = f"""
+        Clean up and summarize these search results about "{topic}":
+        {raw_results}
+        
+        For each result, provide:
+        1. A clear, concise title
+        2. A 1-2 sentence summary of the key points
+        Keep the language professional and journalistic.
+        """
+        
+        cleaned_results = generate_openai_response(results_prompt)
+        
+        return analysis, cleaned_results
     except Exception as e:
         return f"Error: {str(e)}", []
 
@@ -722,16 +736,16 @@ def main():
                     with st.spinner("Searching and analyzing..."):
                         analysis, search_results = search_web(prompt)
                         
-                        # Display analysis
-                        st.write(analysis)
+                        # Create a clean card-like display
+                        st.markdown("""
+                        <div style='background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+                            <h3 style='color: #ffffff; margin-bottom: 15px;'>Analysis</h3>
+                            <p style='color: #ffffff;'>{}</p>
+                        </div>
+                        """.format(analysis), unsafe_allow_html=True)
                         
-                        # Display search results
-                        st.write("\nRelated Articles:")
-                        for result in search_results:
-                            st.write(f"• {result['filename']}")
-                            st.write(f"  {result['snippet']}")
-                            st.write(f"  Link: {result['link']}")
-                            st.write("")  # Add spacing between results
+                        st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Related Articles</h3>", unsafe_allow_html=True)
+                        st.markdown(search_results)
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
@@ -798,16 +812,16 @@ def main():
             with st.spinner("Searching and analyzing..."):
                 analysis, search_results = search_web(prompt)
                 
-                # Display analysis
-                st.write(analysis)
+                # Create a clean card-like display
+                st.markdown("""
+                <div style='background-color: rgba(255,255,255,0.05); padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+                    <h3 style='color: #ffffff; margin-bottom: 15px;'>Analysis</h3>
+                    <p style='color: #ffffff;'>{}</p>
+                </div>
+                """.format(analysis), unsafe_allow_html=True)
                 
-                # Display search results
-                st.write("\nRelated Articles:")
-                for result in search_results:
-                    st.write(f"• {result['filename']}")
-                    st.write(f"  {result['snippet']}")
-                    st.write(f"  Link: {result['link']}")
-                    st.write("")  # Add spacing between results
+                st.markdown("<h3 style='color: #ffffff; margin-top: 30px;'>Related Articles</h3>", unsafe_allow_html=True)
+                st.markdown(search_results)
 
 if __name__ == "__main__":
     main()
