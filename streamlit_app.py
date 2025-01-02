@@ -8,6 +8,7 @@ from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
+from llama_index.llms.openai import OpenAI
 import os
 from io import BytesIO
 import pandas as pd
