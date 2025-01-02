@@ -19,6 +19,8 @@ import json
 from pathlib import Path
 import logging
 from googlesearch import search
+import requests
+from bs4 import BeautifulSoup
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -261,9 +263,9 @@ def create_index():
         for doc in documents:
             chunks = get_document_chunks(doc)
             if isinstance(chunks, str):
-                doc = Document(text=chunks, metadata=doc.metadata)  # Use constructor instead of setting text directly
+                doc = Document(text=chunks, metadata=doc.metadata)
             else:
-                doc = Document(text="\n\n".join(chunks), metadata=doc.metadata)  # Use constructor instead of setting text directly
+                doc = Document(text="\n\n".join(chunks), metadata=doc.metadata)
             processed_docs.append(doc)
         
         # Create new index
@@ -621,11 +623,32 @@ def search_web(topic):
     try:
         # Perform Google search
         search_results = list(search(topic, num_results=5))  # Get top 5 results
-        summary = f"Here are some resources I found for '{topic}':"
+        summaries = []
         
-        return summary, search_results
+        for result in search_results:
+            # Fetch the page content
+            response = requests.get(result)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Extract title and summary
+            title = soup.title.string if soup.title else "No Title"
+            summary = soup.get_text()[:200] + "..."  # Get first 200 characters as summary
+            
+            # Add pros and cons (this is a placeholder; you can customize this logic)
+            pros = "Relevant to current events, potential for deep analysis."
+            cons = "May require extensive research, could be sensitive in nature."
+            
+            summaries.append({
+                "title": title,
+                "link": result,
+                "summary": summary,
+                "pros": pros,
+                "cons": cons
+            })
+        
+        return summaries
     except Exception as e:
-        return f"An error occurred while searching: {str(e)}", []
+        return f"An error occurred while searching: {str(e)}"
 
 def main():
     # Set up Streamlit page configuration
@@ -654,11 +677,14 @@ def main():
         topic = st.text_input("Enter the topic you want to research:")
         if st.button("Search"):
             if topic:
-                summary, links = search_web(topic)
-                st.write(summary)
-                st.write("Related Links:")
-                for link in links:
-                    st.markdown(f"- [Link]({link})")
+                results = search_web(topic)
+                st.write(f"Here are some resources I found for '{topic}':")
+                for result in results:
+                    st.markdown(f"### {result['title']}")
+                    st.markdown(f"[Link]({result['link']})")
+                    st.write(result['summary'])
+                    st.write("**Pros:** " + result['pros'])
+                    st.write("**Cons:** " + result['cons'])
             else:
                 st.error("Please enter a topic to search.")
     else:
