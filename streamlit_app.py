@@ -388,8 +388,244 @@ def get_document_chunks(doc):
         return process_spreadsheet(doc.text, doc.metadata)
     else:
         # For other documents, use sentence splitter with larger chunks
-        splitter = SentenceSplitter()
-        return splitter.split(doc.text, max_length=500)
+        splitter = SentenceSplitter(
+            chunk_size=1024,  # Larger chunks for better context
+            chunk_overlap=200  # More overlap to maintain context
+        )
+        return splitter.split_text(doc.text)
+
+def render_drive_citation(citation):
+    """Render a citation card with relevance-based styling for Drive search"""
+    score = float(citation['score']) if citation['score'] != 'N/A' else 0
+    hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
+    bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
+    
+    html = f"""
+    <div class="doc-card" style="background: {bg_color}; border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
+        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
+        <div class="doc-relevance" style="color: #aaa;">Relevance Score: {citation['score']}</div>
+        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
+        <div class="doc-link">
+            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Document →</a>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_web_citation(citation):
+    """Render a citation card for web search results"""
+    html = f"""
+    <div class="doc-card" style="background: hsla(200, 70%, 30%, 0.2); border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
+        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
+        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
+        <div class="doc-link">
+            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Source →</a>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+def create_logging_sidebar():
+    container = st.sidebar.container()
+    container.markdown("""
+        <style>
+        .status-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+        }
+        .status-icon {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        .status-success { background: #4CAF50; }
+        .status-error { background: #F44336; }
+        .status-loading { background: #FFC107; }
+        .status-text { color: #fff; }
+        </style>
+    """, unsafe_allow_html=True)
+    
+    return container
+
+def create_header():
+    """Create modern header with logo"""
+    capybara_svg = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="24" height="24" style="fill: currentColor;">
+        <path d="M374 74.47c-7.1.26-10.8 6.79-4.3 15.89l24-3.41c-6.5-9.11-14.1-12.69-19.7-12.48zm-38 9.1c-3.5 0-6.6 1.01-9 2.73c-7.1 5.1-7.6 16.8 7.9 28c-8.9 15.9-29.8 45.8-60.2 43.2l32.1 9.8c-2.7 1.6-5.7 3.1-9.2 4.5C118.7 119.4 29.29 275.1 29.29 275.1c51.1 69.9 4.1 98.9 4.1 98.9l7.81 63h28.81l3.19-41s32.5-3 62.8-63.3c29 9.8 71 9.1 102.6 3.3l-4.1 7.1l-37.4 11.1c31.2 2.8 58.5-2.3 78.7-8.5c-3.4-15.1-4.5-31.5 3.5-52.8L307.2 437h25.9s-4.6-75 34.4-143.5c5-7.8 9.4-15.1 13.1-23.7l2 11.1l-10.5 23.2s39-15.7 29.2-96c23 3.9 45.6 1.7 66.6-4.6c5.3-1.7 9.5-5.8 11.2-11c5-15.6 9.5-32.5 10.4-47.3l-9.7.8c-.2-15.3-21.2-13.1-14.9.8l-10.5.5l-4.9-15.5s16.9-12.3 38.4-7.1c-.9-3.2-2.2-6-3.9-8.6c-13.8-20.8-54.3-27.8-122.4-15.6c-8-12.24-17.8-16.96-25.6-16.93zm49.9 33.83c12.4 1.4 21.9 4.3 30.2 9.6h-15.9c-1.6 4.8-7.5 8.4-14.5 8.4s-12.9-3.6-14.5-8.4h-15.5c4.2-3 15.3-9.7 30.2-9.6zm9.6 181.6c-15.2 30.3-34.5 33.8-34.5 33.8c-13.4 37.7-10.4 71.8 1.8 103.9H385c-3.8-44.7-3.2-78.4 10.5-137.7zm-251.1 50.3L126.6 376l27.2 25.1l13.9 35.6h29.9l-20.1-81.8z"/>
+    </svg>
+    """
+    
+    st.markdown(f"""
+        <style>
+        .header-container {{
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }}
+        .logo {{
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            margin-right: 16px;
+            color: #ffffff;
+        }}
+        .title {{
+            font-size: 24px;
+            font-weight: 500;
+            color: #ffffff;
+            margin: 0;
+        }}
+        .subtitle {{
+            font-size: 14px;
+            color: #888;
+            margin: 4px 0 0 0;
+        }}
+        </style>
+        <div class="header-container">
+            <div class="logo">
+                {capybara_svg}
+            </div>
+            <div>
+                <h1 class="title">Prospector</h1>
+                <p class="subtitle">An AI Assistant for Our Drive Folder</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+
+def format_response(response_dict):
+    """Format the chatbot response in a modern style"""
+    citations_html = '\n'.join([
+        f"""
+        <div class="citation-card">
+            <div class="citation-title">{citation['filename']}</div>
+            <div class="citation-score">Relevance: {citation['score']}</div>
+            <div class="citation-snippet">{citation['snippet']}</div>
+            <a href="{citation['link']}" class="citation-link" target="_blank">View Document →</a>
+        </div>
+        """
+        for citation in response_dict.get("primary_citations", []) + response_dict.get("secondary_citations", [])
+    ])
+    
+    st.markdown("""
+        <style>
+        .response-container {
+            font-family: 'Inter', sans-serif;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .answer {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .citations {
+            border-top: 1px solid #eee;
+            padding-top: 16px;
+        }
+        .citation-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 8px 0;
+        }
+        .citation-title {
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 4px;
+        }
+        .citation-score {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 8px;
+        }
+        .citation-snippet {
+            font-size: 14px;
+            color: #444;
+            margin-bottom: 8px;
+        }
+        .citation-link {
+            font-size: 12px;
+            color: #007bff;
+        }
+        </style>
+        <div class="response-container">
+            <div class="answer">{}</div>
+            <div class="citations">
+                <h3>Sources</h3>
+                {}
+            </div>
+        </div>
+    """.format(
+        response_dict['answer'],
+        citations_html
+    ), unsafe_allow_html=True)
+
+def create_chat_interface():
+    st.markdown("""
+        <style>
+        .chat-container {font-family: 'Inter', sans-serif; max-width: 800px; margin: 0 auto;}
+        .stTextInput > div > div > input {font-family: 'Inter', sans-serif; border-radius: 8px !important;}
+        .stChatMessage {background: rgba(255, 255, 255, 0.05) !important; border-radius: 8px; margin: 8px 0;}
+        .stChatInput {border-color: rgba(255, 255, 255, 0.1) !important; background: rgba(255, 255, 255, 0.05) !important;}
+        </style>
+    """, unsafe_allow_html=True)
+
+def set_dark_theme():
+    st.markdown("""
+        <style>
+        /* Dark theme base styles */
+        [data-testid="stAppViewContainer"] {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        [data-testid="stSidebar"] {
+            background-color: #1e1e1e;
+            border-right: 1px solid #333333;
+        }
+        .stTextInput > div > div > input {
+            background-color: #2c2c2c !important;
+            color: #ffffff !important;
+            padding: 12px !important;
+        }
+        .stChatMessage {
+            background-color: #2c2c2c !important;
+            border: none !important;
+            padding: 16px !important;
+            margin: 16px 0 !important;
+        }
+        /* Streamlit icon modifications */
+        [data-testid="stIcon"] {
+            opacity: 0.7;
+            transition: opacity 0.3s;
+        }
+        [data-testid="stIcon"]:hover {
+            opacity: 1;
+        }
+        /* Animation for sidebar elements */
+        .sidebar-container {
+            animation: slideIn 0.5s ease-out;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
 def search_web(topic):
     """Search Google for the given topic and return a summary and links with LLM-generated analysis."""
