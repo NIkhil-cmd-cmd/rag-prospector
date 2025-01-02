@@ -21,13 +21,14 @@ import logging
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
+import openai
 
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set your OpenAI API key from Streamlit secrets
-openai.api_key = st.secrets["OPEN_AI_KEY"]
+os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
 
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
@@ -288,7 +289,7 @@ def generate_response(index, user_input):
         }
     
     # Pre-prompt for semantic search
-    pre_prompt = "Find topics related to the following:"
+    pre_prompt = "You are searching for a journalistic topic. Please provide relevant details."
     user_input = f"{pre_prompt} {user_input}"
 
     retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
@@ -310,8 +311,11 @@ def generate_response(index, user_input):
         primary_citations = [doc for doc in source_docs if getattr(doc, 'score', 0) > 0.85][:2]
         secondary_citations = [doc for doc in source_docs if 0.77 <= getattr(doc, 'score', 0) <= 0.85][:3]
         
+        # Use the updated OpenAI call to generate a response
+        openai_response = generate_openai_response(user_input)
+        
         formatted_response = {
-            "answer": str(response),
+            "answer": openai_response,
             "primary_citations": [format_citation(doc) for doc in primary_citations],
             "secondary_citations": [format_citation(doc) for doc in secondary_citations]
         }
@@ -674,6 +678,18 @@ def search_web(topic):
         return "**Journalism Story Analysis:**", overall_pros, overall_cons, formatted_results
     except Exception as e:
         return f"An error occurred while searching: {str(e)}", "", "", []
+
+def generate_openai_response(prompt):
+    try:
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=prompt,
+            max_tokens=150,
+            temperature=0.7
+        )
+        return response.choices[0].text.strip()
+    except Exception as e:
+        return f"An error occurred while generating a response: {str(e)}"
 
 def main():
     # Set up Streamlit page configuration
