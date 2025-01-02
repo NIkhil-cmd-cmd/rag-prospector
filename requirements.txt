@@ -6,3 +6,4 @@
    python-docx
    requests
    openai
+   googlesearch-python
