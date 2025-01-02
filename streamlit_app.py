@@ -1,32 +1,27 @@
-import os
-import json
-import pickle
-import hashlib
-from pathlib import Path
-from io import BytesIO
-
 import streamlit as st
+from llama_index.core import VectorStoreIndex, Document, Settings
+from llama_index.core.node_parser import SentenceSplitter
+from llama_index.core.retrievers import VectorIndexRetriever
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.postprocessor import SimilarityPostprocessor
+from llama_index.llms.openai import OpenAI
+from llama_index.embeddings.openai import OpenAIEmbedding
+from googleapiclient.discovery import build
+from google.oauth2 import service_account
+import os
+from io import BytesIO
 import pandas as pd
 from docx import Document as DocxDocument
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
+from llama_index.core.storage import StorageContext
+import pickle
+import hashlib
+import json
+from pathlib import Path
+import logging
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
 
-# Import your indexing and search libraries
-from llama_index import (
-    Document,
-    VectorStoreIndex,
-    StorageContext,
-    VectorIndexRetriever,
-    SimilarityPostprocessor,
-    RetrieverQueryEngine
-)
-from sentence_splitter import SentenceSplitter
-
-# Configure logging
-import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
