@@ -102,7 +102,6 @@ def get_file_content(service, file_id, mime_type):
             return None
             
     except Exception as e:
-        st.write(f"Error reading file {file_id}: {str(e)}")
         return None
 
 def get_folder_contents(service, folder_id, documents=None):
@@ -448,7 +447,7 @@ def create_logging_sidebar():
 
 def create_header():
     st.title("🦫 Prospector Pitch Assistant")
-    st.caption("An AI Assistant for Our Drive Folder")
+    st.caption("An AI Pitch Assistant")
 
 def format_response(response_dict):
     """Format the chatbot response in a modern style"""
@@ -763,11 +762,30 @@ def main():
     # Create chat interface styles
     create_chat_interface()
     
-    # Add action selection to main page
+    # Add action selection with descriptions
+    st.write("### Choose Your Action")
+    
     action = st.radio("Select Action", 
                      ["Research Topic", "Critique Pitch", "Check Originality"], 
                      horizontal=True,
                      key="action_select")
+    
+    # Display description based on selected action
+    if action == "Research Topic":
+        st.markdown("""
+        📚 **Research Mode**: Search the web for relevant journalism articles and analysis about your topic. 
+        Get insights from reputable sources and a comprehensive analysis of the topic's newsworthiness.
+        """)
+    elif action == "Critique Pitch":
+        st.markdown("""
+        ✍️ **Pitch Analysis**: Get detailed feedback on your story pitch based on journalistic guidelines. 
+        Includes analysis of strengths, areas for improvement, and relevant research to support your story.
+        """)
+    else:  # Check Originality
+        st.markdown("""
+        🔍 **Originality Check**: Search across the Prospector's archives, Google Drive documents, and published articles 
+        to evaluate your pitch's uniqueness and find similar coverage.
+        """)
     
     try:
         # Load index for Drive searches when needed
