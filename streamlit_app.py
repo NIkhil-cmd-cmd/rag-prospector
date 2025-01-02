@@ -1,28 +1,32 @@
-import streamlit as st
-from llama_index.core import VectorStoreIndex, Document, Settings
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.query_engine import RetrieverQueryEngine
-from llama_index.core.postprocessor import SimilarityPostprocessor
-from llama_index.llms.openai import OpenAI
-from llama_index.embeddings.openai import OpenAIEmbedding
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
 import os
-from io import BytesIO
-import pandas as pd
-from docx import Document as DocxDocument
-from llama_index.core.storage import StorageContext
+import json
 import pickle
 import hashlib
-import json
 from pathlib import Path
-import logging
+from io import BytesIO
+
+import streamlit as st
+import pandas as pd
+from docx import Document as DocxDocument
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
 
+# Import your indexing and search libraries
+from llama_index import (
+    Document,
+    VectorStoreIndex,
+    StorageContext,
+    VectorIndexRetriever,
+    SimilarityPostprocessor,
+    RetrieverQueryEngine
+)
+from sentence_splitter import SentenceSplitter
+
 # Configure logging
+import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -44,7 +48,6 @@ FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 def get_drive_service():
     return build('drive', 'v3', credentials=creds, cache_discovery=False)
 
-# The rest of your code continues...
 def get_file_content(service, file_id, mime_type):
     try:
         if mime_type == 'application/vnd.google-apps.document':
@@ -53,7 +56,7 @@ def get_file_content(service, file_id, mime_type):
                 mimeType='text/plain'
             ).execute()
             return content.decode('utf-8')
-            
+        
         elif mime_type == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
             # Handle XLSX files
             content = service.files().get_media(fileId=file_id).execute()
@@ -125,10 +128,8 @@ def get_folder_contents(service, folder_id, documents=None):
     for file in files:
         if file['mimeType'] == 'application/vnd.google-apps.folder':
             # Recursively get contents of subfolder
-            st.write(f"Entering folder: {file['name']}")
             get_folder_contents(service, file['id'], documents)
         else:
-            st.write(f"Processing file: {file['name']} ({file['mimeType']})")
             content = get_file_content(service, file['id'], file['mimeType'])
             if content:
                 doc = Document(
@@ -140,9 +141,6 @@ def get_folder_contents(service, folder_id, documents=None):
                     }
                 )
                 documents.append(doc)
-                st.write(f"Successfully processed {file['name']}")
-            else:
-                st.write(f"Could not read content from {file['name']}")
     
     return documents
 
@@ -251,11 +249,11 @@ def create_index():
         # Try loading existing index first
         index = load_index()
         if index is not None:
-            st.write("Using existing index")
+            logger.info("Using existing index")
             return index
         
         # If no index exists, create new one
-        st.write("Creating new index...")
+        logger.info("Creating new index...")
         documents = get_drive_documents()
         
         # Process documents with improved chunking
@@ -277,7 +275,7 @@ def create_index():
         # Save index and document states
         doc_states = get_document_states()
         if save_index(index, doc_states):
-            st.write("Index created and saved successfully")
+            logger.info("Index created and saved successfully")
         
         return index
         
@@ -302,7 +300,7 @@ def generate_response(index, user_input):
     query_engine = RetrieverQueryEngine.from_args(
         retriever=retriever, node_postprocessors=[postprocessor], response_mode="tree_summarize"
     )
-    
+
     try:
         response = query_engine.query(user_input)
         if not response or not response.source_nodes:
@@ -322,7 +320,7 @@ def generate_response(index, user_input):
             "secondary_citations": [format_citation(doc) for doc in secondary_citations]
         }
         return formatted_response
-    
+
     except Exception as e:
         return {
             "answer": f"An error occurred while processing your request: {str(e)}",
@@ -343,9 +341,9 @@ def format_citation(doc):
 
 def get_drive_documents():
     service = get_drive_service()
-    st.write("Fetching files from Google Drive...")
+    logger.info("Fetching files from Google Drive...")
     documents = get_folder_contents(service, FOLDER_ID)
-    st.write(f"Successfully created {len(documents)} document objects")
+    logger.info(f"Successfully created {len(documents)} document objects")
     return documents
 
 def get_document_states():
@@ -402,23 +400,21 @@ def get_document_chunks(doc):
         return splitter.split_text(doc.text)
 
 def render_citation(citation):
-    """Render a citation card with relevance-based styling"""
-    score = float(citation['score'])
-    # Calculate background color based on score
-    hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
-    bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
-    
-    html = f"""
-    <div class="doc-card" style="background: {bg_color}; border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
-        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
-        <div class="doc-relevance" style="color: #aaa;">Relevance Score: {citation['score']}</div>
-        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
-        <div class="doc-link">
-            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Document →</a>
+    """Render a citation card with consistent styling"""
+    st.markdown(
+        f"""
+        <div class="citation-card" style="background-color: hsla(200, 70%, 30%, 0.2)">
+            <div class="citation-header">
+                <span class="citation-title">{citation['filename']}</span>
+            </div>
+            <div class="citation-content">
+                <p>{citation['snippet']}</p>
+                <a href="{citation['link']}" target="_blank" class="citation-link">View Source →</a>
+            </div>
         </div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
 
 def create_logging_sidebar():
     container = st.sidebar.container()
@@ -585,20 +581,20 @@ def set_dark_theme():
         <style>
         /* Dark theme base styles */
         [data-testid="stAppViewContainer"] {
-            background-color: #000000;
+            background-color: #121212;
             color: #ffffff;
         }
         [data-testid="stSidebar"] {
-            background-color: #0a0a0a;
-            border-right: 1px solid #1a1a1a;
+            background-color: #1e1e1e;
+            border-right: 1px solid #333333;
         }
         .stTextInput > div > div > input {
-            background-color: #1a1a1a !important;
+            background-color: #2c2c2c !important;
             color: #ffffff !important;
             padding: 12px !important;
         }
         .stChatMessage {
-            background-color: #1a1a1a !important;
+            background-color: #2c2c2c !important;
             border: none !important;
             padding: 16px !important;
             margin: 16px 0 !important;
@@ -623,41 +619,59 @@ def set_dark_theme():
     """, unsafe_allow_html=True)
 
 def search_web(topic):
-    """Search Google for the given topic and return a summary and links."""
+    """Search Google for the given topic and return a summary and links with LLM-generated analysis."""
     if not is_journalistic_topic(topic):
-        return "Please enter a valid journalistic topic for research."
-
+        return "Please enter a valid journalistic topic for research.", "", "", []
+    
     try:
         # Perform Google search
-        search_results = list(search(topic, num_results=5))  # Get top 5 results
-        overall_summary = f"Here are some resources I found for '{topic}':"
-        overall_pros = "Relevant to current events, potential for deep analysis."
-        overall_cons = "May require extensive research, could be sensitive in nature."
-
+        search_results = list(search(topic, num_results=5))
+        
+        # Use LLM to analyze the topic and generate pros/cons
+        llm_prompt = f"""
+        As a journalism expert, analyze this potential story topic: "{topic}"
+        Provide:
+        1. Two key reasons why this would make a compelling journalism story
+        2. Two main challenges or considerations for covering this story
+        Keep each point brief and focused on journalistic value.
+        """
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": llm_prompt}],
+            temperature=0.7
+        )
+        
+        analysis = response.choices[0].message.content
+        pros_cons = analysis.split("\n")
+        overall_pros = "\n".join([p for p in pros_cons if any(word in p.lower() for word in ["compelling", "good", "advantage", "reason"])])
+        overall_cons = "\n".join([c for c in pros_cons if any(word in c.lower() for word in ["challenge", "consideration", "limitation"])])
+        
         formatted_results = []
         for result in search_results:
-            # Fetch the page content
-            response = requests.get(result)
-            soup = BeautifulSoup(response.text, 'html.parser')
+            try:
+                response = requests.get(result, timeout=10)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
+                summary = ' '.join(soup.get_text().split())[:150] + "..."  # Shorter summary
+                
+                formatted_results.append({
+                    "filename": title,
+                    "link": result,
+                    "snippet": summary
+                })
+            except Exception as e:
+                continue
 
-            # Extract title and summary
-            title = soup.title.string if soup.title else "No Title"
-            summary = soup.get_text()[:200] + "..."  # Get first 200 characters as summary
-
-            formatted_results.append({
-                "title": title,
-                "link": result,
-                "summary": summary
-            })
-
-        return overall_summary, overall_pros, overall_cons, formatted_results
+        return "**Journalism Story Analysis:**", overall_pros, overall_cons, formatted_results
     except Exception as e:
-        return f"An error occurred while searching: {str(e)}", [], [], []
+        return f"An error occurred while searching: {str(e)}", "", "", []
 
 def is_journalistic_topic(topic):
     """Check if the topic is related to journalism."""
     # Simple check for common journalistic keywords
-    journalistic_keywords = ["news", "report", "investigate", "journalism", "story", "article", "pitch"]
+    journalistic_keywords = ["news", "report", "investigate", "journalism", "story", "article", "pitch", "analysis", "feature"]
     return any(keyword in topic.lower() for keyword in journalistic_keywords)
 
 def main():
@@ -671,7 +685,7 @@ def main():
     # Apply dark theme
     set_dark_theme()
     
-    # Initialize sidebar with logging
+    # Initialize sidebar with logging and search type
     sidebar_container = create_logging_sidebar()
     
     # Create header
@@ -680,24 +694,28 @@ def main():
     # Create chat interface styles
     create_chat_interface()
     
-    # Dropdown for selecting search type
-    search_type = st.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
+    # Dropdown for selecting search type in the sidebar
+    search_type = sidebar_container.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
     
     if search_type == "Search Web for Topic":
-        topic = st.text_input("Enter the topic you want to research:")
-        if st.button("Search"):
+        topic = st.text_input("Enter the topic you want to research:", key="search_topic")
+        # Remove excessive logs by not displaying each doc processed
+        if st.session_state.get('trigger_search'):
             if topic:
                 overall_summary, overall_pros, overall_cons, results = search_web(topic)
-                st.write(overall_summary)
-                st.write("**Overall Pros:** " + overall_pros)
-                st.write("**Overall Cons:** " + overall_cons)
-                st.write("### Related Links:")
-                for result in results:
-                    st.markdown(f"#### {result['title']}")
-                    st.markdown(f"[Link]({result['link']})")
-                    st.write(result['summary'])
+                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and results == []:
+                    st.error(overall_summary)
+                else:
+                    st.markdown(overall_summary)
+                    st.markdown(f"**Overall Pros:**\n{overall_pros}")
+                    st.markdown(f"**Overall Cons:**\n{overall_cons}")
+                    st.markdown("### Related Links:")
+                    for result in results:
+                        st.markdown(f"#### [{result['title']}]({result['link']})")
+                        st.markdown(f"{result['summary']}\n")
             else:
                 st.error("Please enter a topic to search.")
+    
     else:
         # Existing functionality to search the drive
         try:
@@ -738,8 +756,9 @@ def main():
             else:
                 st.markdown(message["content"])
 
-    # Handle user input
-    if prompt := st.chat_input("Ask me about your documents"):
+    # Handle user input with Enter key
+    prompt = st.chat_input("Ask me about your documents")
+    if prompt:
         # Append user message to session state
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -749,29 +768,29 @@ def main():
             # Generate assistant response with a spinner
             with st.spinner("Thinking..."):
                 response = generate_response(index, prompt)
-            
+        
             # Ensure response is not empty
             if not response.get("answer"):
                 response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-            
+        
             # Append assistant response to session state
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": response
             })
-            
+        
             # Display assistant response
             with st.chat_message("assistant"):
-                st.markdown(response["answer"])
-                if response.get("primary_citations") or response.get("secondary_citations"):
-                    st.markdown("### Sources")
-                    for citation in response.get("primary_citations", []):
-                        render_citation(citation)
-                    for citation in response.get("secondary_citations", []):
-                        render_citation(citation)
+                format_response(response)
         
         except Exception as e:
             st.error(f"An error occurred: {str(e)}")
+
+    # Trigger search when Enter is pressed
+    if 'search_topic' in st.session_state:
+        if st.session_state.search_topic and not st.session_state.get('trigger_search', False):
+            st.session_state['trigger_search'] = True
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()
