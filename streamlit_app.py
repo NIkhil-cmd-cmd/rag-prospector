@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Set your OpenAI API key from Streamlit secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
+openai.api_key = st.secrets["OPEN_AI_KEY"]
 
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
@@ -82,174 +82,36 @@ def get_file_content(service, file_id, mime_type):
             
             return "\n".join(formatted_content)
             
-        elif mime_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-            # Handle DOCX files
-            content = service.files().get_media(fileId=file_id).execute()
-            doc_file = BytesIO(content)
-            doc = DocxDocument(doc_file)
-            return '\n'.join([paragraph.text for paragraph in doc.paragraphs])
-            
-        elif mime_type == 'text/plain':
-            content = service.files().get_media(fileId=file_id).execute()
-            return content.decode('utf-8')
-            
-        elif mime_type == 'application/vnd.google-apps.folder':
-            # Skip folders
-            return None
-            
-        else:
-            st.write(f"Unsupported file type: {mime_type}")
-            return None
-            
     except Exception as e:
-        st.write(f"Error reading file {file_id}: {str(e)}")
-        return None
+        logger.error(f"Error fetching file content: {e}")
+        return ""
 
-def get_folder_contents(service, folder_id, documents=None):
-    if documents is None:
-        documents = []
-    
-    query = f"'{folder_id}' in parents"
-    results = service.files().list(
-        q=query,
-        spaces='drive',
-        fields='files(id, name, mimeType, webViewLink)',
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
-    
-    files = results.get('files', [])
-    
-    for file in files:
-        if file['mimeType'] == 'application/vnd.google-apps.folder':
-            # Recursively get contents of subfolder
-            get_folder_contents(service, file['id'], documents)
-        else:
-            content = get_file_content(service, file['id'], file['mimeType'])
-            if content:
-                doc = Document(
-                    text=content,
-                    metadata={
-                        "filename": file['name'],
-                        "link": file.get('webViewLink', ''),
-                        "filetype": file['mimeType']
-                    }
-                )
-                documents.append(doc)
-    
-    return documents
-
-def get_files_hash():
-    """Get a hash of all files and their last modified times"""
-    service = get_drive_service()
-    files = []
-    
-    def collect_files(folder_id):
-        query = f"'{folder_id}' in parents"
+def get_drive_documents():
+    """Fetch documents from Google Drive folder."""
+    try:
         results = service.files().list(
-            q=query,
-            fields='files(id, name, mimeType, modifiedTime)',
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
+            q=f"'{FOLDER_ID}' in parents",
+            pageSize=100,
+            fields="nextPageToken, files(id, name, mimeType)"
         ).execute()
-        
-        for file in results.get('files', []):
-            if file['mimeType'] == 'application/vnd.google-apps.folder':
-                collect_files(file['id'])
-            else:
-                files.append({
-                    'id': file['id'],
-                    'modified': file['modifiedTime']
-                })
-    
-    collect_files(FOLDER_ID)
-    return hashlib.md5(json.dumps(files, sort_keys=True).encode()).hexdigest()
-
-def save_index(index, doc_states):
-    """Save index and document states to persistent storage"""
-    # Create storage directory if it doesn't exist
-    storage_dir = Path("storage")
-    storage_dir.mkdir(exist_ok=True)
-    
-    storage_context = index._storage_context
-    
-    # Save all index components
-    try:
-        with open(storage_dir / 'docstore.pkl', 'wb') as f:
-            pickle.dump(storage_context.docstore, f)
-        with open(storage_dir / 'index_store.pkl', 'wb') as f:
-            pickle.dump(storage_context.index_store, f)
-        with open(storage_dir / 'vector_store.pkl', 'wb') as f:
-            pickle.dump(storage_context.vector_store, f)
-        with open(storage_dir / 'doc_states.json', 'w') as f:
-            json.dump(doc_states, f)
-            
-        # Save current hash
-        current_hash = get_files_hash()
-        with open(storage_dir / 'files_hash.txt', 'w') as f:
-            f.write(current_hash)
-            
-        return True
+        items = results.get('files', [])
+        documents = []
+        for item in items:
+            content = get_file_content(service, item['id'], item['mimeType'])
+            if content:
+                documents.append(Document(text=content, metadata={'filename': item['name'], 'filetype': item['mimeType']}))
+        return documents
     except Exception as e:
-        st.error(f"Error saving index: {str(e)}")
-        return False
+        logger.error(f"Error fetching documents: {e}")
+        return []
 
-def load_index():
-    """Load index from persistent storage"""
-    storage_dir = Path("storage")
-    
-    try:
-        # Verify hash hasn't changed
-        current_hash = get_files_hash()
-        hash_path = storage_dir / 'files_hash.txt'
-        
-        if hash_path.exists():
-            stored_hash = hash_path.read_text().strip()
-            if current_hash != stored_hash:
-                logger.info("Hash mismatch. Rebuilding index.")
-                return None
-                
-        # Load all components
-        with open(storage_dir / 'docstore.pkl', 'rb') as f:
-            docstore = pickle.load(f)
-        with open(storage_dir / 'index_store.pkl', 'rb') as f:
-            index_store = pickle.load(f)
-        with open(storage_dir / 'vector_store.pkl', 'rb') as f:
-            vector_store = pickle.load(f)
-            
-        # Create storage context
-        storage_context = StorageContext.from_defaults(
-            docstore=docstore,
-            index_store=index_store,
-            vector_store=vector_store
-        )
-        
-        # Reconstruct index
-        return VectorStoreIndex(
-            nodes=list(docstore.docs.values()),
-            storage_context=storage_context,
-            show_progress=True
-        )
-        
-    except FileNotFoundError:
-        return None
-    except Exception as e:
-        st.error(f"Error loading index: {str(e)}")
-        return None
-
-@st.cache_resource
 def create_index():
-    """Create or load index with improved document processing"""
+    """Create or load the document index."""
     try:
-        # Try loading existing index first
-        index = load_index()
-        if index is not None:
-            logger.info("Using existing index")
-            return index
-        
-        # If no index exists, create new one
-        logger.info("Creating new index...")
         documents = get_drive_documents()
+        if not documents:
+            logger.warning("No documents found in the Drive folder.")
+            return None
         
         # Process documents with improved chunking
         processed_docs = []
@@ -262,125 +124,12 @@ def create_index():
             processed_docs.append(doc)
         
         # Create new index
-        index = VectorStoreIndex.from_documents(
-            processed_docs,
-            show_progress=True
-        )
-        
-        # Save index and document states
-        doc_states = get_document_states()
-        if save_index(index, doc_states):
-            logger.info("Index created and saved successfully")
-        
+        storage_context = StorageContext.from_defaults()
+        index = VectorStoreIndex.from_documents(processed_docs, storage_context=storage_context)
         return index
-        
     except Exception as e:
-        st.error(f"Error creating index: {str(e)}")
+        logger.error(f"Error creating index: {e}")
         return None
-
-def generate_response(index, user_input):
-    if not index:
-        return {
-            "answer": "No documents found in the drive to search through.",
-            "primary_citations": [],
-            "secondary_citations": []
-        }
-    
-    # Pre-prompt for semantic search
-    pre_prompt = "You are searching for a journalistic topic. Please provide relevant details."
-    user_input = f"{pre_prompt} {user_input}"
-
-    retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
-    postprocessor = SimilarityPostprocessor(similarity_cutoff=0.77)
-    query_engine = RetrieverQueryEngine.from_args(
-        retriever=retriever, node_postprocessors=[postprocessor], response_mode="tree_summarize"
-    )
-
-    try:
-        response = query_engine.query(user_input)
-        if not response or not response.source_nodes:
-            return {
-                "answer": "I couldn't find any relevant information based on your query.",
-                "primary_citations": [],
-                "secondary_citations": []
-            }
-        
-        source_docs = sorted(response.source_nodes, key=lambda x: getattr(x, 'score', 0), reverse=True)
-        primary_citations = [doc for doc in source_docs if getattr(doc, 'score', 0) > 0.85][:2]
-        secondary_citations = [doc for doc in source_docs if 0.77 <= getattr(doc, 'score', 0) <= 0.85][:3]
-        
-        formatted_response = {
-            "answer": str(response),
-            "primary_citations": [format_citation(doc) for doc in primary_citations],
-            "secondary_citations": [format_citation(doc) for doc in secondary_citations]
-        }
-        return formatted_response
-
-    except Exception as e:
-        return {
-            "answer": f"An error occurred while processing your request: {str(e)}",
-            "primary_citations": [],
-            "secondary_citations": []
-        }
-
-def format_citation(doc):
-    metadata = doc.metadata
-    score = getattr(doc, 'score', None)
-    snippet = doc.node.text[:150] + "..." if len(doc.node.text) > 150 else doc.node.text
-    return {
-        "filename": metadata.get('filename', 'Untitled'),
-        "score": f"{score:.2f}" if score else 'N/A',
-        "snippet": snippet,
-        "link": metadata.get('link', '#')
-    }
-
-def get_drive_documents():
-    service = get_drive_service()
-    logger.info("Fetching files from Google Drive...")
-    documents = get_folder_contents(service, FOLDER_ID)
-    logger.info(f"Successfully created {len(documents)} document objects")
-    return documents
-
-def get_document_states():
-    """Get current state of all documents in Drive"""
-    service = get_drive_service()
-    doc_states = {}
-    
-    def collect_file_states(folder_id):
-        query = f"'{folder_id}' in parents"
-        results = service.files().list(
-            q=query,
-            fields='files(id, name, mimeType, modifiedTime)',
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        for file in results.get('files', []):
-            if file['mimeType'] == 'application/vnd.google-apps.folder':
-                collect_file_states(file['id'])
-            else:
-                doc_states[file['id']] = {
-                    'name': file['name'],
-                    'modified': file['modifiedTime']
-                }
-    
-    collect_file_states(FOLDER_ID)
-    return doc_states
-
-def process_spreadsheet(content, metadata):
-    """Process spreadsheet content to maintain cell context"""
-    chunks = []
-    current_sheet = ""
-    
-    for line in content.split('\n'):
-        if line.startswith('Sheet:'):
-            current_sheet = line.replace('Sheet:', '').strip()
-        elif line.strip():
-            # Combine sheet name, cell reference and content
-            chunk = f"{current_sheet}: {line}"
-            chunks.append(chunk)
-    
-    return "\n\n".join(chunks)
 
 def get_document_chunks(doc):
     """Chunk documents based on type and maintain context"""
@@ -394,16 +143,31 @@ def get_document_chunks(doc):
         )
         return splitter.split_text(doc.text)
 
+def process_spreadsheet(content, metadata):
+    """Process spreadsheet content into chunks."""
+    chunks = []
+    current_sheet = ""
+    
+    for line in content.split('\n'):
+        if line.startswith('Sheet:'):
+            current_sheet = line.replace('Sheet:', '').strip()
+        elif line.strip():
+            # Combine sheet name, cell reference and content
+            chunk = f"{current_sheet}: {line}"
+            chunks.append(chunk)
+    
+    return "\n\n".join(chunks)
+
 def render_drive_citation(citation):
     """Render a citation card with relevance-based styling for Drive search"""
-    score = float(citation['score']) if citation['score'] != 'N/A' else 0
+    score = float(citation['score']) if citation.get('score') and citation['score'] != 'N/A' else 0
     hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
     bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
     
     html = f"""
     <div class="doc-card" style="background: {bg_color}; border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
         <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
-        <div class="doc-relevance" style="color: #aaa;">Relevance Score: {citation['score']}</div>
+        <div class="doc-relevance" style="color: #aaa;">Relevance Score: {citation.get('score', 'N/A')}</div>
         <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
         <div class="doc-link">
             <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Document →</a>
@@ -510,7 +274,6 @@ def format_response(response_dict):
         f"""
         <div class="citation-card">
             <div class="citation-title">{citation['filename']}</div>
-            <div class="citation-score">Relevance: {citation['score']}</div>
             <div class="citation-snippet">{citation['snippet']}</div>
             <a href="{citation['link']}" class="citation-link" target="_blank">View Document →</a>
         </div>
@@ -526,6 +289,7 @@ def format_response(response_dict):
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            color: #333;
         }
         .answer {
             font-size: 16px;
@@ -547,11 +311,6 @@ def format_response(response_dict):
             font-weight: 600;
             color: #1a1a1a;
             margin-bottom: 4px;
-        }
-        .citation-score {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 8px;
         }
         .citation-snippet {
             font-size: 14px;
@@ -636,6 +395,9 @@ def search_web(topic):
         # Perform Google search
         search_results = list(search(topic, num_results=5))
         
+        if not search_results:
+            return "No results found for the given topic.", "", "", []
+        
         # Use LLM to analyze the topic and generate pros/cons
         llm_prompt = f"""
         As a journalism expert, analyze this potential story topic: "{topic}"
@@ -651,8 +413,8 @@ def search_web(topic):
             temperature=0.7
         )
         
-        analysis = response.choices[0].message.content
-        pros_cons = analysis.split("\n")
+        analysis = response.choices[0].message.content.strip()
+        pros_cons = analysis.split('\n')
         overall_pros = "\n".join([p for p in pros_cons if any(word in p.lower() for word in ["compelling", "good", "advantage", "reason"])])
         overall_cons = "\n".join([c for c in pros_cons if any(word in c.lower() for word in ["challenge", "consideration", "limitation"])])
         
@@ -671,10 +433,12 @@ def search_web(topic):
                     "snippet": summary
                 })
             except Exception as e:
+                logger.error(f"Error fetching web page: {e}")
                 continue
 
         return "**Journalism Story Analysis:**", overall_pros, overall_cons, formatted_results
     except Exception as e:
+        logger.error(f"Error during web search: {e}")
         return f"An error occurred while searching: {str(e)}", "", "", []
 
 def is_journalistic_topic(topic):
@@ -683,22 +447,61 @@ def is_journalistic_topic(topic):
     journalistic_keywords = ["news", "report", "investigate", "journalism", "story", "article", "pitch", "analysis", "feature"]
     return any(keyword in topic.lower() for keyword in journalistic_keywords)
 
-def render_citation(citation):
-    """Render a citation card with consistent styling"""
-    st.markdown(
-        f"""
-        <div class="citation-card" style="background-color: hsla(200, 70%, 30%, 0.2)">
-            <div class="citation-header">
-                <span class="citation-title">{citation['filename']}</span>
-            </div>
-            <div class="citation-content">
-                <p>{citation['snippet']}</p>
-                <a href="{citation['link']}" target="_blank" class="citation-link">View Source →</a>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
+def generate_response(index, user_input):
+    """Generate a response based on user input using the document index."""
+    if not index:
+        return {
+            "answer": "No documents found in the drive to search through.",
+            "primary_citations": [],
+            "secondary_citations": []
+        }
+
+    # Pre-prompt for semantic search
+    user_input = f"You are searching for a journalistic topic. Please provide relevant details. {user_input}"
+
+    retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
+    postprocessor = SimilarityPostprocessor(similarity_cutoff=0.77)
+    query_engine = RetrieverQueryEngine.from_args(
+        retriever=retriever, node_postprocessors=[postprocessor], response_mode="tree_summarize"
     )
+
+    try:
+        response = query_engine.query(user_input)
+        if not response or not response.source_nodes:
+            return {
+                "answer": "I couldn't find any relevant information based on your query.",
+                "primary_citations": [],
+                "secondary_citations": []
+            }
+
+        source_docs = sorted(response.source_nodes, key=lambda x: getattr(x, 'score', 0), reverse=True)
+        primary_citations = [doc for doc in source_docs if getattr(doc, 'score', 0) > 0.85][:2]
+        secondary_citations = [doc for doc in source_docs if 0.77 <= getattr(doc, 'score', 0) <= 0.85][:3]
+
+        formatted_response = {
+            "answer": str(response),
+            "primary_citations": [format_citation(doc) for doc in primary_citations],
+            "secondary_citations": [format_citation(doc) for doc in secondary_citations]
+        }
+
+        return formatted_response
+
+    except Exception as e:
+        logger.error(f"Error generating response: {e}")
+        return {
+            "answer": f"An error occurred while generating the response: {str(e)}",
+            "primary_citations": [],
+            "secondary_citations": []
+        }
+
+def format_citation(doc):
+    """Format a document citation."""
+    return {
+        'filename': doc.metadata.get('filename', 'Unknown Document'),
+        'score': f"{doc.score:.2f}",
+        'snippet': doc.text[:150] + '...' if len(doc.text) > 150 else doc.text,
+        'link': doc.metadata.get('link', '#')
+    }
 
 def main():
     # Set up Streamlit page configuration
@@ -724,11 +527,15 @@ def main():
     search_type = sidebar_container.selectbox("Select Search Type", ["Search Drive for Past Pitches", "Search Web for Topic"])
     
     if search_type == "Search Web for Topic":
-        topic = st.text_input("Enter the topic you want to research:", key="search_topic")
-        if st.session_state.get('trigger_search'):
+        # Use a form to handle search submission via Enter key
+        with st.form(key='web_search_form'):
+            topic = st.text_input("Enter the topic you want to research:", key="search_topic")
+            submitted = st.form_submit_button("Search")
+        
+        if submitted:
             if topic:
                 overall_summary, overall_pros, overall_cons, results = search_web(topic)
-                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and results == []:
+                if isinstance(overall_summary, str) and overall_cons == "" and overall_pros == "" and not results:
                     st.error(overall_summary)
                 else:
                     st.markdown(overall_summary)
@@ -743,9 +550,9 @@ def main():
                     
                     st.markdown("### Related Sources")
                     for result in results:
-                        render_citation({
-                            'filename': result['title'],
-                            'snippet': result['summary'],
+                        render_web_citation({
+                            'filename': result['filename'],
+                            'snippet': result['snippet'],
                             'link': result['link']
                         })
             else:
@@ -765,67 +572,64 @@ def main():
             st.error(f"Error loading index: {str(e)}")
             return
 
-    # Initialize chat history in session state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": {
-                "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
-                "primary_citations": [],
-                "secondary_citations": []
-            }
-        })
-
-    # Display existing chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            if isinstance(message["content"], dict):
-                st.markdown(message["content"]["answer"])
-                if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
-                    st.markdown("### Sources")
-                    for citation in message["content"].get("primary_citations", []):
-                        render_drive_citation(citation)
-                    for citation in message["content"].get("secondary_citations", []):
-                        render_drive_citation(citation)
-            else:
-                st.markdown(message["content"])
-
-    # Handle user input with Enter key
-    prompt = st.chat_input("Ask me about your documents")
-    if prompt:
-        # Append user message to session state
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        try:
-            # Generate assistant response with a spinner
-            with st.spinner("Thinking..."):
-                response = generate_response(index, prompt)
-        
-            # Ensure response is not empty
-            if not response.get("answer"):
-                response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
-        
-            # Append assistant response to session state
+        # Initialize chat history in session state
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
             st.session_state.messages.append({
                 "role": "assistant",
-                "content": response
+                "content": {
+                    "answer": "Hello! I can help you find information in your Google Drive documents. Ask me anything about their contents!",
+                    "primary_citations": [],
+                    "secondary_citations": []
+                }
             })
-        
-            # Display assistant response
-            with st.chat_message("assistant"):
-                format_response(response)
-        
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
 
-    # Trigger search when Enter is pressed
-    if 'search_topic' in st.session_state:
-        if st.session_state.search_topic and not st.session_state.get('trigger_search', False):
-            st.session_state['trigger_search'] = True
-            st.experimental_rerun()
+        # Display existing chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                if isinstance(message["content"], dict):
+                    st.markdown(message["content"]["answer"])
+                    if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
+                        st.markdown("### Sources")
+                        for citation in message["content"].get("primary_citations", []):
+                            render_drive_citation(citation)
+                        for citation in message["content"].get("secondary_citations", []):
+                            render_drive_citation(citation)
+                else:
+                    st.markdown(message["content"])
+
+        # Handle user input with Enter key using form
+        with st.form(key='drive_chat_form', clear_on_submit=True):
+            prompt = st.text_input("Ask me about your documents")
+            submit_button = st.form_submit_button(label="Send")
+        
+        if submit_button and prompt:
+            # Append user message to session state
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            try:
+                # Generate assistant response with a spinner
+                with st.spinner("Thinking..."):
+                    response = generate_response(index, prompt)
+            
+                # Ensure response is not empty
+                if not response.get("answer"):
+                    response["answer"] = "I'm sorry, I couldn't find an answer to that based on the available documents."
+            
+                # Append assistant response to session state
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response
+                })
+            
+                # Display assistant response
+                with st.chat_message("assistant"):
+                    format_response(response)
+            
+            except Exception as e:
+                st.error(f"An error occurred: {str(e)}")
 
 if __name__ == "__main__":
     main()
