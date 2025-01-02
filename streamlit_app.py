@@ -719,10 +719,32 @@ def main():
                 else:
                     sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
             elif data_source == 'Google':
-                # Placeholder for Google data source integration
                 index = None
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-loading"></div><div class="status-text">🔄 Switching to Google...</div></div>', unsafe_allow_html=True)
-                st.warning("Google data source is not yet implemented.")
+                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">🔍 Google Search Ready</div></div>', unsafe_allow_html=True)
+                
+                if prompt := st.chat_input("Enter a topic to research"):
+                    with st.spinner("Searching and analyzing..."):
+                        analysis_header, pros, cons, search_results = search_web(prompt)
+                        
+                        # Display analysis
+                        st.markdown(analysis_header)
+                        if pros:
+                            st.markdown("### Key Strengths:")
+                            st.markdown(pros)
+                        if cons:
+                            st.markdown("### Considerations:")
+                            st.markdown(cons)
+                        
+                        # Display search results
+                        if search_results:
+                            st.markdown("### Related Articles")
+                            for result in search_results:
+                                render_citation({
+                                    "filename": result["filename"],
+                                    "snippet": result["snippet"],
+                                    "link": result["link"],
+                                    "score": "N/A"
+                                })
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
