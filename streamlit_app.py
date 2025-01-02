@@ -288,12 +288,16 @@ def generate_response(index, user_input):
             "secondary_citations": []
         }
     
+    # Pre-prompt for semantic search
+    pre_prompt = "You are searching for a journalistic topic. Please provide relevant details."
+    user_input = f"{pre_prompt} {user_input}"
+
     retriever = VectorIndexRetriever(index=index, similarity_top_k=7)
     postprocessor = SimilarityPostprocessor(similarity_cutoff=0.77)
     query_engine = RetrieverQueryEngine.from_args(
         retriever=retriever, node_postprocessors=[postprocessor], response_mode="tree_summarize"
     )
-    
+
     try:
         response = query_engine.query(user_input)
         if not response or not response.source_nodes:
@@ -316,7 +320,7 @@ def generate_response(index, user_input):
             "secondary_citations": [format_citation(doc) for doc in secondary_citations]
         }
         return formatted_response
-    
+
     except Exception as e:
         return {
             "answer": f"An error occurred while processing your request: {str(e)}",
@@ -677,13 +681,13 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
+        response = openai.Completion.create(
+            engine="text-davinci-003",
+            prompt=prompt,
             max_tokens=150,
             temperature=0.7
         )
-        return response.choices[0].message['content'].strip()
+        return response.choices[0].text.strip()
     except Exception as e:
         return f"An error occurred while generating a response: {str(e)}"
 
