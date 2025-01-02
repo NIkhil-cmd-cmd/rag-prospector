@@ -21,6 +21,7 @@ import logging
 from googlesearch import search
 import requests
 from bs4 import BeautifulSoup
+import openai
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
