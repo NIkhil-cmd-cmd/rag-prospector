@@ -691,6 +691,61 @@ def analyze_pitch(pitch, section):
     except Exception as e:
         return f"Error analyzing pitch: {str(e)}"
 
+def check_originality(pitch, section):
+    try:
+        # Search Prospector website
+        prospector_results = list(search(f"site:chsprospector.com {pitch}", num_results=5))
+        issuu_results = list(search(f"site:issuu.com/prospector {pitch}", num_results=5))
+        
+        # Get detailed content for similarity comparison
+        similar_articles = []
+        
+        # Process Prospector results
+        for url in prospector_results + issuu_results:
+            try:
+                response = requests.get(url, timeout=10)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                title = soup.title.string.strip() if soup.title else "Untitled"
+                
+                # Extract content
+                content = ""
+                if main_content := (soup.find('article') or soup.find('main')):
+                    content = ' '.join(p.get_text().strip() for p in main_content.find_all('p'))
+                
+                if content:
+                    similar_articles.append({
+                        "title": title,
+                        "url": url,
+                        "content": content[:500]
+                    })
+            except Exception:
+                continue
+        
+        # Generate originality analysis using LLM
+        analysis_prompt = f"""
+        Analyze this pitch for originality compared to existing articles:
+
+        Pitch: {pitch}
+        Section: {section}
+
+        Similar articles found:
+        {similar_articles}
+
+        Provide:
+        1. Originality score (0-100%)
+        2. Analysis of unique elements
+        3. Comparison to existing coverage
+        4. Suggestions for differentiation
+        
+        Include specific references to similar articles if found.
+        """
+        
+        originality_analysis = generate_openai_response(analysis_prompt)
+        
+        return originality_analysis, similar_articles
+    except Exception as e:
+        return f"Error checking originality: {str(e)}", []
+
 def main():
     # Set up Streamlit page configuration
     st.set_page_config(
@@ -702,15 +757,27 @@ def main():
     # Apply dark theme
     set_dark_theme()
     
-    # Initialize sidebar with logging and data source selection
-    sidebar_container = create_logging_sidebar()
+    # Create header
+    create_header()
     
-    # Add data source selection to sidebar
+    # Create chat interface styles
+    create_chat_interface()
+    
+    # Add data source selection to main page
     if 'data_source' not in st.session_state:
         st.session_state.data_source = 'Drive'
     
-    data_source = st.sidebar.selectbox("Select Data Source", ['Drive', 'Google'], key='data_source_select')
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        data_source = st.selectbox("Select Data Source", ['Drive', 'Google'], key='data_source_select')
     
+    with col2:
+        if data_source == 'Google':
+            action = st.radio("Select Action", 
+                            ["Research Topic", "Critique Pitch", "Check Originality"], 
+                            horizontal=True,
+                            key="google_action")
+
     # Reset chat when data source changes
     if 'prev_data_source' not in st.session_state:
         st.session_state.prev_data_source = data_source
@@ -720,21 +787,15 @@ def main():
         st.session_state.prev_data_source = data_source
         st.rerun()
     
-    # Create header
-    create_header()
-    
-    # Create chat interface styles
-    create_chat_interface()
-    
     try:
         # Load or create the document index with a spinner
         with st.spinner("Loading document index..."):
             if data_source == 'Drive':
                 index = create_index()
                 if index:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
+                    st.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
                 else:
-                    sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
+                    st.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
 
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
@@ -798,9 +859,6 @@ def main():
                 st.error(f"An error occurred: {str(e)}")
 
     elif data_source == 'Google':
-        # Add section selection for pitch critique
-        action = st.radio("Select Action", ["Research Topic", "Critique Pitch"], key="google_action")
-        
         if action == "Research Topic":
             if prompt := st.chat_input("Enter a topic to research", key="google_search"):
                 with st.spinner("Searching and analyzing..."):
@@ -808,6 +866,34 @@ def main():
                     st.write(analysis)
                     st.write("\nRelated Articles:")
                     st.write(search_results)
+        
+        elif action == "Check Originality":
+            section = st.selectbox(
+                "Select Section",
+                ["News", "Opinions", "Lifestyles", "Sports", "Investigations", 
+                 "Features", "Postscript", "Arts & Culture", "In-Depth", "Multimedia", "Podcast"],
+                key="originality_section"
+            )
+            
+            pitch = st.text_area("Enter your pitch", 
+                               height=150,
+                               placeholder="Describe your story idea in detail...",
+                               key="originality_pitch")
+            
+            if st.button("Check Originality"):
+                if not pitch:
+                    st.warning("Please enter a pitch to analyze.")
+                else:
+                    with st.spinner("Analyzing originality..."):
+                        originality_analysis, similar_articles = check_originality(pitch, section)
+                        st.markdown("### Originality Analysis")
+                        st.write(originality_analysis)
+                        
+                        if similar_articles:
+                            st.markdown("### Similar Articles Found")
+                            for article in similar_articles:
+                                st.markdown(f"**[{article['title']}]({article['url']})**")
+                                st.write(article['content'][:200] + "...")
         
         else:  # Critique Pitch
             section = st.selectbox(
