@@ -30,7 +30,7 @@ SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 FOLDER_ID = '1H6PgbGSvDlTvc-Zip3VW0XiHjedDKrR9'
 
 # Set your OpenAI API key from Streamlit secrets
-os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_API_KEY"]
+os.environ["OPENAI_API_KEY"] = st.secrets["OPEN_AI_KEY"]
 
 # Load service account credentials from Streamlit secrets
 service_account_info = json.loads(st.secrets["gcp"]["service_account_json"])
