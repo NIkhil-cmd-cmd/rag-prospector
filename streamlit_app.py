@@ -623,34 +623,26 @@ def set_dark_theme():
     """, unsafe_allow_html=True)
 
 def search_web(topic):
-    """Search Google for the given topic and return a summary and links with LLM-generated analysis."""
     try:
         # Perform Google search
         search_results = list(search(topic, num_results=5))
         
-        # Use LLM to analyze the topic and generate pros/cons
+        # Generate analysis using LLM
         llm_prompt = f"""
-        As a journalism expert, analyze this potential story topic: "{topic}"
-        Provide:
-        1. Two key reasons why this would make a compelling journalism story
-        2. Two main challenges or considerations for covering this story
-        Keep each point brief and focused on journalistic value.
+        Analyze this topic as a potential news story: "{topic}"
+        Provide a brief analysis of its journalistic value, including key strengths and challenges.
         """
         
         analysis = generate_openai_response(llm_prompt)
-        pros_cons = analysis.split("\n")
-        overall_pros = "\n".join([p for p in pros_cons if any(word in p.lower() for word in ["compelling", "good", "advantage", "reason"])])
-        overall_cons = "\n".join([c for c in pros_cons if any(word in c.lower() for word in ["challenge", "consideration", "limitation"])])
         
+        # Format search results
         formatted_results = []
         for result in search_results:
             try:
                 response = requests.get(result, timeout=10)
                 soup = BeautifulSoup(response.text, 'html.parser')
-                
                 title = soup.title.string.strip() if soup.title and soup.title.string else "No Title"
-                summary = ' '.join(soup.get_text().split())[:150] + "..."  # Shorter summary
-                
+                summary = ' '.join(soup.get_text().split())[:150] + "..."
                 formatted_results.append({
                     "filename": title,
                     "link": result,
@@ -659,9 +651,9 @@ def search_web(topic):
             except Exception:
                 continue
 
-        return "**Journalism Story Analysis:**", overall_pros, overall_cons, formatted_results
+        return analysis, formatted_results
     except Exception as e:
-        return f"An error occurred while searching: {str(e)}", "", "", []
+        return f"Error: {str(e)}", []
 
 def generate_openai_response(prompt):
     try:
@@ -726,29 +718,20 @@ def main():
                 index = None
                 sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">🔍 Google Search Ready</div></div>', unsafe_allow_html=True)
                 
-                if prompt := st.chat_input("Enter a topic to research"):
+                if prompt := st.chat_input("Enter a topic to research", key="google_chat"):
                     with st.spinner("Searching and analyzing..."):
-                        analysis_header, pros, cons, search_results = search_web(prompt)
+                        analysis, search_results = search_web(prompt)
                         
                         # Display analysis
-                        st.markdown(analysis_header)
-                        if pros:
-                            st.markdown("### Key Strengths:")
-                            st.markdown(pros)
-                        if cons:
-                            st.markdown("### Considerations:")
-                            st.markdown(cons)
+                        st.write(analysis)
                         
                         # Display search results
-                        if search_results:
-                            st.markdown("### Related Articles")
-                            for result in search_results:
-                                render_citation({
-                                    "filename": result["filename"],
-                                    "snippet": result["snippet"],
-                                    "link": result["link"],
-                                    "score": "N/A"
-                                })
+                        st.write("\nRelated Articles:")
+                        for result in search_results:
+                            st.write(f"• {result['filename']}")
+                            st.write(f"  {result['snippet']}")
+                            st.write(f"  Link: {result['link']}")
+                            st.write("")  # Add spacing between results
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
@@ -781,7 +764,7 @@ def main():
 
     # Handle user input based on data source
     if data_source == 'Drive':
-        if prompt := st.chat_input("Ask me about your documents"):
+        if prompt := st.chat_input("Ask me about your documents", key="drive_chat"):
             st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -811,29 +794,20 @@ def main():
                 st.error(f"An error occurred: {str(e)}")
 
     elif data_source == 'Google':
-        if prompt := st.chat_input("Enter a topic to research"):
+        if prompt := st.chat_input("Enter a topic to research", key="google_chat"):
             with st.spinner("Searching and analyzing..."):
-                analysis_header, pros, cons, search_results = search_web(prompt)
+                analysis, search_results = search_web(prompt)
                 
                 # Display analysis
-                st.markdown(analysis_header)
-                if pros:
-                    st.markdown("### Key Strengths:")
-                    st.markdown(pros)
-                if cons:
-                    st.markdown("### Considerations:")
-                    st.markdown(cons)
+                st.write(analysis)
                 
                 # Display search results
-                if search_results:
-                    st.markdown("### Related Articles")
-                    for result in search_results:
-                        render_citation({
-                            "filename": result["filename"],
-                            "snippet": result["snippet"],
-                            "link": result["link"],
-                            "score": "N/A"
-                        })
+                st.write("\nRelated Articles:")
+                for result in search_results:
+                    st.write(f"• {result['filename']}")
+                    st.write(f"  {result['snippet']}")
+                    st.write(f"  Link: {result['link']}")
+                    st.write("")  # Add spacing between results
 
 if __name__ == "__main__":
     main()
