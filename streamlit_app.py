@@ -394,22 +394,36 @@ def get_document_chunks(doc):
         )
         return splitter.split_text(doc.text)
 
-def render_citation(citation):
-    """Render a citation card with consistent styling"""
-    st.markdown(
-        f"""
-        <div class="citation-card" style="background-color: hsla(200, 70%, 30%, 0.2)">
-            <div class="citation-header">
-                <span class="citation-title">{citation['filename']}</span>
-            </div>
-            <div class="citation-content">
-                <p>{citation['snippet']}</p>
-                <a href="{citation['link']}" target="_blank" class="citation-link">View Source →</a>
-            </div>
+def render_drive_citation(citation):
+    """Render a citation card with relevance-based styling for Drive search"""
+    score = float(citation['score']) if citation['score'] != 'N/A' else 0
+    hue = min(120, max(0, (score - 0.77) * 500))  # Maps 0.77-1.0 to 0-120 (red to green)
+    bg_color = f"hsla({hue}, 70%, 30%, 0.2)"
+    
+    html = f"""
+    <div class="doc-card" style="background: {bg_color}; border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
+        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
+        <div class="doc-relevance" style="color: #aaa;">Relevance Score: {citation['score']}</div>
+        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
+        <div class="doc-link">
+            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Document →</a>
         </div>
-        """,
-        unsafe_allow_html=True
-    )
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+def render_web_citation(citation):
+    """Render a citation card for web search results"""
+    html = f"""
+    <div class="doc-card" style="background: hsla(200, 70%, 30%, 0.2); border-radius: 12px; padding: 16px; margin: 12px 0; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);">
+        <div class="doc-title" style="font-weight: bold; color: #fff;">{citation['filename']}</div>
+        <div class="doc-snippet" style="color: #ddd;">{citation['snippet']}</div>
+        <div class="doc-link">
+            <a href="{citation['link']}" target="_blank" style="color: #4CAF50; text-decoration: none;">View Source →</a>
+        </div>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
 
 def create_logging_sidebar():
     container = st.sidebar.container()
@@ -694,7 +708,6 @@ def main():
     
     if search_type == "Search Web for Topic":
         topic = st.text_input("Enter the topic you want to research:", key="search_topic")
-        # Remove excessive logs by not displaying each doc processed
         if st.session_state.get('trigger_search'):
             if topic:
                 overall_summary, overall_pros, overall_cons, results = search_web(topic)
@@ -702,12 +715,22 @@ def main():
                     st.error(overall_summary)
                 else:
                     st.markdown(overall_summary)
-                    st.markdown(f"**Overall Pros:**\n{overall_pros}")
-                    st.markdown(f"**Overall Cons:**\n{overall_cons}")
-                    st.markdown("### Related Links:")
+                    st.markdown("### Story Potential")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**✔️ Advantages**")
+                        st.markdown(overall_pros)
+                    with col2:
+                        st.markdown("**❌ Challenges**")
+                        st.markdown(overall_cons)
+                    
+                    st.markdown("### Related Sources")
                     for result in results:
-                        st.markdown(f"#### [{result['title']}]({result['link']})")
-                        st.markdown(f"{result['summary']}\n")
+                        render_web_citation({
+                            'filename': result['title'],
+                            'snippet': result['summary'],
+                            'link': result['link']
+                        })
             else:
                 st.error("Please enter a topic to search.")
     
@@ -745,9 +768,9 @@ def main():
                 if message["content"].get("primary_citations") or message["content"].get("secondary_citations"):
                     st.markdown("### Sources")
                     for citation in message["content"].get("primary_citations", []):
-                        render_citation(citation)
+                        render_drive_citation(citation)
                     for citation in message["content"].get("secondary_citations", []):
-                        render_citation(citation)
+                        render_drive_citation(citation)
             else:
                 st.markdown(message["content"])
 
