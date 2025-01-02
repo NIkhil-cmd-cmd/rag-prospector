@@ -646,14 +646,7 @@ def search_web(topic):
         Keep each point brief and focused on journalistic value.
         """
         
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=llm_prompt,
-            max_tokens=150,
-            temperature=0.7
-        )
-        
-        analysis = response.choices[0].text.strip()
+        analysis = llm.generate(llm_prompt, max_tokens=150, temperature=0.7).strip()
         pros_cons = analysis.split("\n")
         overall_pros = "\n".join([p for p in pros_cons if any(word in p.lower() for word in ["compelling", "good", "advantage", "reason"])])
         overall_cons = "\n".join([c for c in pros_cons if any(word in c.lower() for word in ["challenge", "consideration", "limitation"])])
@@ -681,13 +674,8 @@ def search_web(topic):
 
 def generate_openai_response(prompt):
     try:
-        response = openai.Completion.create(
-            engine="text-davinci-003",
-            prompt=prompt,
-            max_tokens=150,
-            temperature=0.7
-        )
-        return response.choices[0].text.strip()
+        response = llm.generate(prompt, max_tokens=150, temperature=0.7)
+        return response.strip()
     except Exception as e:
         return f"An error occurred while generating a response: {str(e)}"
 
