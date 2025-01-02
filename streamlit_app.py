@@ -99,7 +99,6 @@ def get_file_content(service, file_id, mime_type):
             return None
             
         else:
-            st.write(f"Unsupported file type: {mime_type}")
             return None
             
     except Exception as e:
@@ -682,18 +681,7 @@ def main():
                     sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">✓ Index Created Successfully</div></div>', unsafe_allow_html=True)
                 else:
                     sidebar_container.markdown('<div class="status-item"><div class="status-icon status-error"></div><div class="status-text">❌ Failed to create or load index.</div></div>', unsafe_allow_html=True)
-            elif data_source == 'Google':
-                index = None
-                sidebar_container.markdown('<div class="status-item"><div class="status-icon status-success"></div><div class="status-text">🔍 Google Search Ready</div></div>', unsafe_allow_html=True)
-                
-                if prompt := st.chat_input("Enter a topic to research", key="google_search_prompt"):
-                    with st.spinner("Searching and analyzing..."):
-                        analysis, search_results = search_web(prompt)
-                        
-                        # Display analysis and results
-                        st.write(analysis)
-                        st.write("\nRelated Articles:")
-                        st.write(search_results)
+
     except Exception as e:
         st.error(f"Error creating index: {str(e)}")
         return
